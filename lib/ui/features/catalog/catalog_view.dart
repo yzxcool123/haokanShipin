@@ -50,7 +50,7 @@ class _CatalogViewState extends State<CatalogView> {
         final sourceName = vm.source?.name ?? '未选择源';
         return Scaffold(
           appBar: AppBar(
-            title: const Text('源盒'),
+            title: const Text('爱看影视'),
             actions: [
               TextButton(
                 onPressed: () => context.go('/sources'),

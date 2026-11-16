@@ -13,5 +13,5 @@ Future<void> main() async {
     bundle: rootBundle,
   );
   await sourceRepository.load();
-  runApp(SourceBoxApp(sourceRepository: sourceRepository));
+  runApp(AiKanYingShiApp(sourceRepository: sourceRepository));
 }

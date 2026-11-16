@@ -1,4 +1,4 @@
-# 源盒
+# 爱看影视
 
 可切换数据源的个人 Flutter 影视 App。首页、分类、搜索和播放都走当前选中的源，也可以手动添加采集站接口。
 
@@ -19,7 +19,7 @@ flutter run
 如果只想手动处理，也可以执行：
 
 ```bash
-flutter create . --project-name source_box --org com.sourcebox --platforms=android,ios
+flutter create . --project-name aikan_yingshi --org com.aikan --platforms=android,ios
 flutter pub get
 flutter run
 ```

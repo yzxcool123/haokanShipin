@@ -1,5 +1,5 @@
-name: source_box
-description: 可切换数据源的个人影视 App
+name: aikan_yingshi
+description: 爱看影视，可切换数据源的个人影视 App
 publish_to: "none"
 version: 1.0.0+1
 

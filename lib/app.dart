@@ -15,16 +15,16 @@ import 'ui/features/search/search_view_model.dart';
 import 'ui/features/sources/sources_view.dart';
 import 'ui/features/sources/sources_view_model.dart';
 
-class SourceBoxApp extends StatefulWidget {
-  const SourceBoxApp({super.key, required this.sourceRepository});
+class AiKanYingShiApp extends StatefulWidget {
+  const AiKanYingShiApp({super.key, required this.sourceRepository});
 
   final SourceRepository sourceRepository;
 
   @override
-  State<SourceBoxApp> createState() => _SourceBoxAppState();
+  State<AiKanYingShiApp> createState() => _AiKanYingShiAppState();
 }
 
-class _SourceBoxAppState extends State<SourceBoxApp> {
+class _AiKanYingShiAppState extends State<AiKanYingShiApp> {
   late final CatalogRepository _catalogRepository;
   late final CatalogViewModel _catalogViewModel;
   late final SearchViewModel _searchViewModel;
@@ -119,7 +119,7 @@ class _SourceBoxAppState extends State<SourceBoxApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: '源盒',
+      title: '爱看影视',
       theme: AppTheme.dark(),
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
