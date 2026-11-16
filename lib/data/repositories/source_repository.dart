@@ -2,19 +2,19 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models/media_source.dart';
+import '../services/json_http.dart';
 
 class SourceRepository extends ChangeNotifier {
   SourceRepository({
     required SharedPreferences prefs,
     required AssetBundle bundle,
-    http.Client? client,
+    JsonHttp? http,
   })  : _prefs = prefs,
         _bundle = bundle,
-        _client = client ?? http.Client();
+        _http = http ?? JsonHttp();
 
   static const bundledAsset = 'assets/sources.json';
   static const remoteConfigUrl =
@@ -24,7 +24,7 @@ class SourceRepository extends ChangeNotifier {
 
   final SharedPreferences _prefs;
   final AssetBundle _bundle;
-  final http.Client _client;
+  final JsonHttp _http;
 
   List<MediaSource> _bundled = const [];
   List<MediaSource> _custom = const [];
@@ -59,13 +59,8 @@ class SourceRepository extends ChangeNotifier {
   }
 
   Future<void> refreshRemote() async {
-    final response = await _client.get(Uri.parse(remoteConfigUrl)).timeout(
-      const Duration(seconds: 20),
-    );
-    if (response.statusCode != 200) {
-      throw Exception('刷新源列表失败：${response.statusCode}');
-    }
-    _bundled = _parseSites(utf8.decode(response.bodyBytes));
+    final data = await _http.get(Uri.parse(remoteConfigUrl));
+    _bundled = _parseSitesMap(data);
     notifyListeners();
   }
 
@@ -107,6 +102,10 @@ class SourceRepository extends ChangeNotifier {
   List<MediaSource> _parseSites(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) return const [];
+    return _parseSitesMap(Map<String, dynamic>.from(decoded));
+  }
+
+  List<MediaSource> _parseSitesMap(Map<String, dynamic> decoded) {
     final sites = decoded['sites'];
     if (sites is! List) return const [];
     return [

@@ -120,13 +120,22 @@ class CmsApiClient implements VodClient {
     if (keyword != null && keyword.trim().isNotEmpty) {
       params['wd'] = keyword.trim();
     }
-    var data = await _get(params);
-    var result = _toPage(data);
-    // 个别站 videolist 为空时，退回精简列表
-    if (result.list.isEmpty && keyword == null) {
+    Map<String, dynamic>? data;
+    PagedVod? result;
+    try {
+      data = await _get(params);
+      result = _toPage(data);
+    } catch (_) {
+      // videolist 在部分站会返回无法直接解析的压缩数据，改走精简列表
+    }
+    final searching = keyword != null && keyword.trim().isNotEmpty;
+    if ((result == null || result.list.isEmpty) && !searching) {
       params['ac'] = 'list';
       data = await _get(params);
       result = _toPage(data);
+    }
+    if (data == null || result == null) {
+      throw ApiException('没有拿到列表数据。');
     }
     final cats = _readCategories(data);
     if (cats.isNotEmpty) _cachedCategories = cats;
