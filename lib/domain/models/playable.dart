@@ -23,11 +23,61 @@ class Playable {
     required this.url,
     this.headers = const {},
     this.title = '',
+    this.sourceKey = '',
+    this.vodId = '',
+    this.name = '',
+    this.pic = '',
+    this.sourceName = '',
+    this.lineName = '',
+    this.episodeId = '',
+    this.episodeTitle = '',
+    this.startPosition = Duration.zero,
   });
 
   final String url;
   final Map<String, String> headers;
   final String title;
+  final String sourceKey;
+  final String vodId;
+  final String name;
+  final String pic;
+  final String sourceName;
+  final String lineName;
+  final String episodeId;
+  final String episodeTitle;
+  final Duration startPosition;
 
   bool get isHls => url.toLowerCase().contains('.m3u8');
+
+  bool get canTrackHistory => sourceKey.isNotEmpty && vodId.isNotEmpty;
+
+  Playable copyWith({
+    String? url,
+    Map<String, String>? headers,
+    String? title,
+    String? sourceKey,
+    String? vodId,
+    String? name,
+    String? pic,
+    String? sourceName,
+    String? lineName,
+    String? episodeId,
+    String? episodeTitle,
+    Duration? startPosition,
+  }) {
+    return Playable(
+      url: url ?? this.url,
+      headers: headers ?? this.headers,
+      title: title ?? this.title,
+      sourceKey: sourceKey ?? this.sourceKey,
+      vodId: vodId ?? this.vodId,
+      name: name ?? this.name,
+      pic: pic ?? this.pic,
+      sourceName: sourceName ?? this.sourceName,
+      lineName: lineName ?? this.lineName,
+      episodeId: episodeId ?? this.episodeId,
+      episodeTitle: episodeTitle ?? this.episodeTitle,
+      startPosition: startPosition ?? this.startPosition,
+    );
+  }
 }

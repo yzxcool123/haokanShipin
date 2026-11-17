@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/catalog_repository.dart';
+import '../../../data/repositories/history_repository.dart';
 import '../../../domain/models/playable.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
@@ -11,11 +12,13 @@ class DetailView extends StatefulWidget {
   const DetailView({
     super.key,
     required this.catalogRepository,
+    required this.historyRepository,
     required this.sourceKey,
     required this.vodId,
   });
 
   final CatalogRepository catalogRepository;
+  final HistoryRepository historyRepository;
   final String sourceKey;
   final String vodId;
 
@@ -48,6 +51,7 @@ class _DetailViewState extends State<DetailView> {
   DetailViewModel _createViewModel() {
     return DetailViewModel(
       catalogRepository: widget.catalogRepository,
+      historyRepository: widget.historyRepository,
       sourceKey: widget.sourceKey,
       vodId: widget.vodId,
     );

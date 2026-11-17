@@ -1,17 +1,21 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/catalog_repository.dart';
+import '../../../data/repositories/history_repository.dart';
 import '../../../domain/models/playable.dart';
 import '../../../domain/models/vod_detail.dart';
 
 class DetailViewModel extends ChangeNotifier {
   DetailViewModel({
     required CatalogRepository catalogRepository,
+    required HistoryRepository historyRepository,
     required this.sourceKey,
     required this.vodId,
-  }) : _catalogRepository = catalogRepository;
+  })  : _catalogRepository = catalogRepository,
+        _historyRepository = historyRepository;
 
   final CatalogRepository _catalogRepository;
+  final HistoryRepository _historyRepository;
   final String sourceKey;
   final String vodId;
 
@@ -34,6 +38,12 @@ class DetailViewModel extends ChangeNotifier {
     try {
       detail = await _catalogRepository.detail(vodId, sourceKey: sourceKey);
       lineIndex = _preferredLineIndex(detail?.lines ?? const []);
+      final record = _historyRepository.find(sourceKey, vodId);
+      if (record != null && record.lineName.isNotEmpty) {
+        final index = (detail?.lines ?? const [])
+            .indexWhere((line) => line.name == record.lineName);
+        if (index >= 0) lineIndex = index;
+      }
     } catch (e) {
       error = e.toString();
     } finally {
@@ -47,12 +57,31 @@ class DetailViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Playable> play(Episode episode) {
-    return _catalogRepository.play(
+  Future<Playable> play(Episode episode) async {
+    final playable = await _catalogRepository.play(
       id: vodId,
       episode: episode,
       lineName: currentLine?.name,
       sourceKey: sourceKey,
+    );
+    final record = _historyRepository.find(sourceKey, vodId);
+    var start = Duration.zero;
+    if (record != null &&
+        !record.isFinished &&
+        record.episodeId == episode.id) {
+      start = Duration(milliseconds: record.positionMs);
+    }
+    final item = detail?.item;
+    return playable.copyWith(
+      sourceKey: sourceKey,
+      vodId: vodId,
+      name: item?.name ?? playable.name,
+      pic: item?.pic ?? playable.pic,
+      lineName: currentLine?.name ?? '',
+      episodeId: episode.id,
+      episodeTitle: episode.title,
+      title: playable.title.isNotEmpty ? playable.title : episode.title,
+      startPosition: start,
     );
   }
 

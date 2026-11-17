@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'data/repositories/catalog_repository.dart';
+import 'data/repositories/history_repository.dart';
 import 'data/repositories/source_repository.dart';
 import 'domain/models/playable.dart';
 import 'ui/app_shell.dart';
@@ -10,6 +11,9 @@ import 'ui/features/catalog/catalog_view.dart';
 import 'ui/features/catalog/catalog_view_model.dart';
 import 'ui/features/detail/detail_view.dart';
 import 'ui/features/player/player_view.dart';
+import 'ui/features/profile/history_view.dart';
+import 'ui/features/profile/profile_view.dart';
+import 'ui/features/profile/profile_view_model.dart';
 import 'ui/features/search/search_view.dart';
 import 'ui/features/search/search_view_model.dart';
 import 'ui/features/sources/sources_view.dart';
@@ -31,9 +35,11 @@ class HaoKanShiPinApp extends StatefulWidget {
 
 class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
   late final CatalogRepository _catalogRepository;
+  late final HistoryRepository _historyRepository;
   late final CatalogViewModel _catalogViewModel;
   late final SearchViewModel _searchViewModel;
   late final SourcesViewModel _sourcesViewModel;
+  late final ProfileViewModel _profileViewModel;
   late final GoRouter _router;
 
   @override
@@ -43,6 +49,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
       sourceRepository: widget.sourceRepository,
       prefs: widget.prefs,
     );
+    _historyRepository = HistoryRepository(
+      prefs: widget.prefs,
+      sourceRepository: widget.sourceRepository,
+    );
     _catalogViewModel = CatalogViewModel(
       catalogRepository: _catalogRepository,
       sourceRepository: widget.sourceRepository,
@@ -50,6 +60,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
     _searchViewModel = SearchViewModel(catalogRepository: _catalogRepository);
     _sourcesViewModel =
         SourcesViewModel(sourceRepository: widget.sourceRepository);
+    _profileViewModel = ProfileViewModel(
+      historyRepository: _historyRepository,
+      sourceRepository: widget.sourceRepository,
+    );
     _router = _createRouter();
   }
 
@@ -83,13 +97,23 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
             StatefulShellBranch(
               routes: [
                 GoRoute(
-                  path: '/sources',
+                  path: '/me',
                   builder: (context, state) =>
-                      SourcesView(viewModel: _sourcesViewModel),
+                      ProfileView(viewModel: _profileViewModel),
                 ),
               ],
             ),
           ],
+        ),
+        GoRoute(
+          path: '/sources',
+          builder: (context, state) =>
+              SourcesView(viewModel: _sourcesViewModel),
+        ),
+        GoRoute(
+          path: '/history',
+          builder: (context, state) =>
+              HistoryView(historyRepository: _historyRepository),
         ),
         GoRoute(
           path: '/detail/:sourceKey/:id',
@@ -100,6 +124,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
             return DetailView(
               key: ValueKey('detail_${sourceKey}_$id'),
               catalogRepository: _catalogRepository,
+              historyRepository: _historyRepository,
               sourceKey: sourceKey,
               vodId: id,
             );
@@ -112,7 +137,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
             if (playable is! Playable) {
               return const Scaffold(body: Center(child: Text('没有可播放的地址')));
             }
-            return PlayerView(playable: playable);
+            return PlayerView(
+              playable: playable,
+              historyRepository: _historyRepository,
+            );
           },
         ),
       ],
@@ -124,6 +152,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
     _catalogViewModel.dispose();
     _searchViewModel.dispose();
     _sourcesViewModel.dispose();
+    _profileViewModel.dispose();
+    _historyRepository.dispose();
     _router.dispose();
     super.dispose();
   }

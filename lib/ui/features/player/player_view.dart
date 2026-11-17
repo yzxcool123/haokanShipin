@@ -5,18 +5,24 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../data/repositories/history_repository.dart';
 import '../../../domain/models/playable.dart';
 
 class PlayerView extends StatefulWidget {
-  const PlayerView({super.key, required this.playable});
+  const PlayerView({
+    super.key,
+    required this.playable,
+    required this.historyRepository,
+  });
 
   final Playable playable;
+  final HistoryRepository historyRepository;
 
   @override
   State<PlayerView> createState() => _PlayerViewState();
 }
 
-class _PlayerViewState extends State<PlayerView> {
+class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
   static const _accent = Color(0xFF7C9CFF);
   static const _seekStep = Duration(seconds: 10);
@@ -30,10 +36,12 @@ class _PlayerViewState extends State<PlayerView> {
   Duration? _dragPosition;
   double _speed = 1.0;
   Timer? _hideTimer;
+  Timer? _historyTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -56,9 +64,18 @@ class _PlayerViewState extends State<PlayerView> {
       if (_speed != 1.0) {
         await controller.setPlaybackSpeed(_speed);
       }
+      final start = widget.playable.startPosition;
+      final duration = controller.value.duration;
+      if (start > const Duration(seconds: 3) &&
+          duration > Duration.zero &&
+          start < duration - const Duration(seconds: 3)) {
+        await controller.seekTo(start);
+      }
       await controller.play();
       if (!mounted) return;
       setState(() {});
+      _saveHistory();
+      _startHistoryTimer();
       _scheduleHide();
     } catch (e) {
       debugPrint('player init failed: $e');
@@ -124,6 +141,7 @@ class _PlayerViewState extends State<PlayerView> {
     if (controller.value.isPlaying) {
       await controller.pause();
       _hideTimer?.cancel();
+      _saveHistory();
       _showPanel(restartTimer: false);
     } else {
       if (controller.value.duration > Duration.zero &&
@@ -263,6 +281,8 @@ class _PlayerViewState extends State<PlayerView> {
 
   Future<void> _retry() async {
     _hideTimer?.cancel();
+    _historyTimer?.cancel();
+    _saveHistory();
     _controller?.removeListener(_onVideoUpdated);
     await _controller?.dispose();
     _controller = null;
@@ -291,9 +311,41 @@ class _PlayerViewState extends State<PlayerView> {
     return '$minutes:$seconds';
   }
 
+  void _startHistoryTimer() {
+    _historyTimer?.cancel();
+    _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _saveHistory();
+    });
+  }
+
+  void _saveHistory() {
+    final playable = widget.playable;
+    if (!playable.canTrackHistory) return;
+    final value = _controller?.value;
+    final position = value?.position ?? Duration.zero;
+    final duration = value?.duration ?? Duration.zero;
+    widget.historyRepository.savePlayable(
+      playable,
+      position: position,
+      duration: duration,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _saveHistory();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
+    _historyTimer?.cancel();
+    _saveHistory();
     WakelockPlus.disable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);

@@ -62,7 +62,7 @@ class _CatalogViewState extends State<CatalogView> {
             title: const Text('蓝果短剧'),
             actions: [
               TextButton(
-                onPressed: () => context.go('/sources'),
+                onPressed: () => context.push('/sources'),
                 child: Text(
                   sourceName,
                   overflow: TextOverflow.ellipsis,
