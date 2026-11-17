@@ -37,6 +37,7 @@ class SourceRepository extends ChangeNotifier {
   String? _selectedKeyValue;
   final Map<String, SourceAvailability> _availability = {};
   int _probeGeneration = 0;
+  MediaSource? _localHuangguo;
 
   List<MediaSource> get sources {
     final byKey = <String, MediaSource>{};
@@ -55,10 +56,16 @@ class SourceRepository extends ChangeNotifier {
     return list.first;
   }
 
-  SourceAvailability availabilityOf(String key) =>
-      _availability[key] ?? SourceAvailability.unknown;
+  SourceAvailability availabilityOf(String key) {
+    final source = _sourceByKey(key);
+    if (source != null && source.isHuangguo) {
+      return SourceAvailability.available;
+    }
+    return _availability[key] ?? SourceAvailability.unknown;
+  }
 
   String displayNameOf(MediaSource source) {
+    if (source.isHuangguo) return source.name;
     if (availabilityOf(source.key) == SourceAvailability.unavailable) {
       return '${source.name}（不可用）';
     }
@@ -67,11 +74,11 @@ class SourceRepository extends ChangeNotifier {
 
   Future<void> load() async {
     final raw = await _bundle.loadString(bundledAsset);
-    _bundled = _parseSites(raw);
+    final bundled = _parseSites(raw);
+    _localHuangguo = bundled.where((source) => source.isHuangguo).firstOrNull ??
+        _canonicalHuangguo;
     final cached = _loadRemoteCache();
-    if (cached.isNotEmpty) {
-      _bundled = cached;
-    }
+    _bundled = _withLocalHuangguo(cached.isNotEmpty ? cached : bundled);
     _custom = _loadCustom();
     _selectedKeyValue = _prefs.getString(_selectedKey);
     if (current == null && sources.isNotEmpty) {
@@ -94,7 +101,7 @@ class SourceRepository extends ChangeNotifier {
     final data = await _http
         .get(Uri.parse(remoteConfigUrl))
         .timeout(const Duration(seconds: 15));
-    _bundled = _parseSitesMap(data);
+    _bundled = _withLocalHuangguo(_parseSitesMap(data));
     await _prefs.setString(_remoteCacheKey, jsonEncode(data));
     notifyListeners();
   }
@@ -102,7 +109,11 @@ class SourceRepository extends ChangeNotifier {
   Future<void> probeAll() async {
     final generation = ++_probeGeneration;
     final list = sources;
-    final targets = list.where((source) => source.isSupported).toList();
+    for (final source in list.where((item) => item.isHuangguo)) {
+      _availability[source.key] = SourceAvailability.available;
+    }
+    final targets =
+        list.where((source) => source.isSupported && !source.isHuangguo).toList();
     _availability.removeWhere((key, _) => list.every((source) => source.key != key));
     for (final source in targets) {
       _availability[source.key] = SourceAvailability.checking;
@@ -134,12 +145,10 @@ class SourceRepository extends ChangeNotifier {
   }
 
   Future<SourceAvailability> _probe(MediaSource source) async {
+    if (source.isHuangguo) return SourceAvailability.available;
     try {
       final client = createVodClient(source);
-      // 黄果的 categories() 只返回内置分类、不会发网络请求；
-      // 探测必须走 HuangguoApiClient.list()，沿用 DoH、签名和站点/Worker 回退。
-      final future = source.isHuangguo ? client.list(page: 1) : client.categories();
-      await future.timeout(_probeTimeout);
+      await client.categories().timeout(_probeTimeout);
       return SourceAvailability.available;
     } catch (_) {
       return SourceAvailability.unavailable;
@@ -180,6 +189,43 @@ class SourceRepository extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  static const _canonicalHuangguo = MediaSource(
+    key: 'huangguo_web',
+    name: '黄果短剧',
+    type: 3,
+    api:
+        'https://cdn.jsdelivr.net/gh/SikROo/huangguo-spider@v10.4/huangguo_web_spider.js',
+  );
+
+  MediaSource get _pinnedHuangguo => _localHuangguo ?? _canonicalHuangguo;
+
+  MediaSource? _sourceByKey(String key) {
+    for (final source in sources) {
+      if (source.key == key) return source;
+    }
+    return null;
+  }
+
+  bool _isHuangguoEntry(MediaSource source) {
+    if (source.isHuangguo) return true;
+    final key = source.key.toLowerCase();
+    final api = source.api.toLowerCase();
+    return key.contains('huangguo') ||
+        source.name.contains('黄果') ||
+        api.contains('huangguo');
+  }
+
+  /// 远程/缓存列表里的黄果条目一律丢掉，改用本地单独适配的源。
+  List<MediaSource> _withLocalHuangguo(List<MediaSource> sources) {
+    final pinned = _pinnedHuangguo;
+    final others = sources.where((source) => !_isHuangguoEntry(source)).toList();
+    final index = sources.indexWhere(_isHuangguoEntry);
+    if (index < 0 || index >= others.length) {
+      return [pinned, ...others];
+    }
+    return [...others.sublist(0, index), pinned, ...others.sublist(index)];
   }
 
   List<MediaSource> _parseSites(String raw) {

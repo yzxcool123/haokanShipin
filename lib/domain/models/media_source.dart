@@ -17,11 +17,13 @@ class MediaSource {
 
   bool get isCms => type == 1;
 
-  bool get isHuangguo =>
-      type == 3 &&
-      (key == 'huangguo_web' ||
-          api.contains('huangguo_web_spider') ||
-          api.contains('huangguo-parser'));
+  bool get isHuangguo {
+    final keyLower = key.toLowerCase();
+    final apiLower = api.toLowerCase();
+    return keyLower.contains('huangguo') ||
+        name.contains('黄果') ||
+        apiLower.contains('huangguo');
+  }
 
   bool get isSupported => isCms || isHuangguo;
 

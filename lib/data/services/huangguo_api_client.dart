@@ -39,13 +39,8 @@ class HuangguoApiClient implements VodClient {
     VodCategory(id: 'rank:potential', name: '潜力榜'),
   ];
 
-  String get _base {
-    final api = source.api.trim();
-    if (api.startsWith('http') && !api.endsWith('.js')) {
-      return api.endsWith('/') ? api.substring(0, api.length - 1) : api;
-    }
-    return defaultWorker;
-  }
+  // 始终使用本地适配的 Worker，不采用远程站点列表里返回的接口地址。
+  String get _base => defaultWorker;
 
   Map<String, String> _signHeaders(String pathWithQuery, {int shift = 0}) {
     final win = DateTime.now().millisecondsSinceEpoch ~/ 1000 ~/ 300 + shift;
