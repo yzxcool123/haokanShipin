@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'data/repositories/catalog_repository.dart';
 import 'data/repositories/favorite_repository.dart';
 import 'data/repositories/history_repository.dart';
+import 'data/repositories/offline_cache_repository.dart';
 import 'data/repositories/source_repository.dart';
 import 'domain/models/playable.dart';
 import 'ui/app_shell.dart';
@@ -42,6 +43,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
   late final CatalogRepository _catalogRepository;
   late final HistoryRepository _historyRepository;
   late final FavoriteRepository _favoriteRepository;
+  late final OfflineCacheRepository _offlineCacheRepository;
   late final CatalogViewModel _catalogViewModel;
   late final SearchViewModel _searchViewModel;
   late final SourcesViewModel _sourcesViewModel;
@@ -63,6 +65,11 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
       prefs: widget.prefs,
       sourceRepository: widget.sourceRepository,
     );
+    _offlineCacheRepository = OfflineCacheRepository(
+      prefs: widget.prefs,
+      sourceRepository: widget.sourceRepository,
+      catalogRepository: _catalogRepository,
+    );
     _catalogViewModel = CatalogViewModel(
       catalogRepository: _catalogRepository,
       sourceRepository: widget.sourceRepository,
@@ -76,6 +83,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
     _profileViewModel = ProfileViewModel(
       historyRepository: _historyRepository,
       favoriteRepository: _favoriteRepository,
+      offlineCacheRepository: _offlineCacheRepository,
       sourceRepository: widget.sourceRepository,
     );
     _router = _createRouter();
@@ -136,7 +144,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
         ),
         GoRoute(
           path: '/downloads',
-          builder: (context, state) => const DownloadsView(),
+          builder: (context, state) => DownloadsView(
+            offlineCacheRepository: _offlineCacheRepository,
+            historyRepository: _historyRepository,
+          ),
         ),
         GoRoute(
           path: '/about',
@@ -159,6 +170,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               catalogRepository: _catalogRepository,
               historyRepository: _historyRepository,
               favoriteRepository: _favoriteRepository,
+              offlineCacheRepository: _offlineCacheRepository,
               sourceKey: sourceKey,
               vodId: id,
             );
@@ -174,6 +186,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
             return PlayerView(
               playable: playable,
               historyRepository: _historyRepository,
+              offlineCacheRepository: _offlineCacheRepository,
             );
           },
         ),
@@ -189,6 +202,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
     _profileViewModel.dispose();
     _historyRepository.dispose();
     _favoriteRepository.dispose();
+    _offlineCacheRepository.dispose();
     _router.dispose();
     super.dispose();
   }

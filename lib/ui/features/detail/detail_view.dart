@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../../data/repositories/catalog_repository.dart';
 import '../../../data/repositories/favorite_repository.dart';
 import '../../../data/repositories/history_repository.dart';
+import '../../../data/repositories/offline_cache_repository.dart';
+import '../../../domain/models/offline_cache_item.dart';
 import '../../../domain/models/playable.dart';
+import '../../core/widgets/cache_status_button.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import 'detail_view_model.dart';
@@ -15,6 +18,7 @@ class DetailView extends StatefulWidget {
     required this.catalogRepository,
     required this.historyRepository,
     required this.favoriteRepository,
+    required this.offlineCacheRepository,
     required this.sourceKey,
     required this.vodId,
   });
@@ -22,6 +26,7 @@ class DetailView extends StatefulWidget {
   final CatalogRepository catalogRepository;
   final HistoryRepository historyRepository;
   final FavoriteRepository favoriteRepository;
+  final OfflineCacheRepository offlineCacheRepository;
   final String sourceKey;
   final String vodId;
 
@@ -56,6 +61,7 @@ class _DetailViewState extends State<DetailView> {
       catalogRepository: widget.catalogRepository,
       historyRepository: widget.historyRepository,
       favoriteRepository: widget.favoriteRepository,
+      offlineCacheRepository: widget.offlineCacheRepository,
       sourceKey: widget.sourceKey,
       vodId: widget.vodId,
     );
@@ -73,6 +79,43 @@ class _DetailViewState extends State<DetailView> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     } finally {
       if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<void> _cache(Episode episode) async {
+    try {
+      await _viewModel.cacheEpisode(episode);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已开始缓存本集')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _cacheLine() async {
+    try {
+      final added = await _viewModel.cacheCurrentLine();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(added == 0 ? '当前线路已经全部缓存' : '已将 $added 集加入缓存队列'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _retryCache(Episode episode) async {
+    try {
+      await _viewModel.retryCache(episode);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -193,22 +236,93 @@ class _DetailViewState extends State<DetailView> {
               const SizedBox(height: 12),
               if (vm.currentLine == null || vm.currentLine!.episodes.isEmpty)
                 const Text('没有可播放的分集')
-              else
+              else ...[
+                if (vm.uncachedEpisodes.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _cacheLine,
+                      icon: const Icon(Icons.download_outlined, size: 18),
+                      label: const Text('缓存本线路全部'),
+                    ),
+                  ),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     for (final episode in vm.currentLine!.episodes)
-                      FilledButton.tonal(
-                        onPressed: _opening ? null : () => _play(episode),
-                        child: Text(episode.title),
+                      _EpisodeChip(
+                        title: episode.title,
+                        enabled: !_opening,
+                        cacheItem: vm.cacheItemOf(episode),
+                        onPlay: () => _play(episode),
+                        onCache: () => _cache(episode),
+                        onCancel: () => vm.cancelCache(episode),
+                        onRetry: () => _retryCache(episode),
                       ),
                   ],
                 ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+
+class _EpisodeChip extends StatelessWidget {
+  const _EpisodeChip({
+    required this.title,
+    required this.enabled,
+    required this.cacheItem,
+    required this.onPlay,
+    required this.onCache,
+    required this.onCancel,
+    required this.onRetry,
+  });
+
+  final String title;
+  final bool enabled;
+  final OfflineCacheItem? cacheItem;
+  final VoidCallback onPlay;
+  final VoidCallback onCache;
+  final VoidCallback onCancel;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: enabled ? onPlay : null,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 2, 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                    ),
+              ),
+              CacheStatusButton(
+                item: cacheItem,
+                onCache: onCache,
+                onCancel: onCancel,
+                onRetry: onRetry,
+                iconSize: 18,
+                padding: const EdgeInsets.all(6),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

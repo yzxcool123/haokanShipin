@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,17 +7,22 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../data/repositories/history_repository.dart';
+import '../../../data/repositories/offline_cache_repository.dart';
+import '../../../domain/models/offline_cache_item.dart';
 import '../../../domain/models/playable.dart';
+import '../../core/widgets/cache_status_button.dart';
 
 class PlayerView extends StatefulWidget {
   const PlayerView({
     super.key,
     required this.playable,
     required this.historyRepository,
+    required this.offlineCacheRepository,
   });
 
   final Playable playable;
   final HistoryRepository historyRepository;
+  final OfflineCacheRepository offlineCacheRepository;
 
   @override
   State<PlayerView> createState() => _PlayerViewState();
@@ -42,6 +48,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.offlineCacheRepository.addListener(_onCacheUpdated);
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -53,11 +60,32 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     try {
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.playable.url),
-        httpHeaders: widget.playable.headers,
-        formatHint: widget.playable.isHls ? VideoFormat.hls : null,
-      );
+      final playable = widget.playable;
+      late final VideoPlayerController controller;
+      if (playable.isLocal) {
+        final file = File(_localFilePath(playable.url));
+        if (!await file.exists()) {
+          if (mounted) {
+            setState(() => _error = '本地文件已丢失，请重新缓存或从已下载中删除');
+          }
+          return;
+        }
+        // 本地 HLS 需要带上 formatHint，file 构造函数不支持该参数。
+        if (playable.isHls) {
+          controller = VideoPlayerController.networkUrl(
+            Uri.file(file.path),
+            formatHint: VideoFormat.hls,
+          );
+        } else {
+          controller = VideoPlayerController.file(file);
+        }
+      } else {
+        controller = VideoPlayerController.networkUrl(
+          Uri.parse(playable.url),
+          httpHeaders: playable.headers,
+          formatHint: playable.isHls ? VideoFormat.hls : null,
+        );
+      }
       _controller = controller;
       controller.addListener(_onVideoUpdated);
       await controller.initialize();
@@ -342,6 +370,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    widget.offlineCacheRepository.removeListener(_onCacheUpdated);
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _historyTimer?.cancel();
@@ -416,6 +445,72 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+
+  void _onCacheUpdated() {
+    if (mounted) setState(() {});
+  }
+
+  String _localFilePath(String url) {
+    if (url.startsWith('file:')) {
+      return Uri.parse(url).toFilePath();
+    }
+    return url;
+  }
+
+  OfflineCacheItem? get _cacheItem {
+    final playable = widget.playable;
+    if (playable.sourceKey.isEmpty ||
+        playable.vodId.isEmpty ||
+        playable.episodeId.isEmpty) {
+      return null;
+    }
+    return widget.offlineCacheRepository.findEpisode(
+      sourceKey: playable.sourceKey,
+      vodId: playable.vodId,
+      lineName: playable.lineName,
+      episodeId: playable.episodeId,
+    );
+  }
+
+  bool get _alreadyLocal => widget.playable.isLocal;
+
+  Future<void> _cacheCurrent() async {
+    try {
+      await widget.offlineCacheRepository.cachePlayable(widget.playable);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已开始缓存本集')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _cancelCache() async {
+    final item = _cacheItem;
+    if (item == null) return;
+    await widget.offlineCacheRepository.cancel(item.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已取消缓存')),
+    );
+  }
+
+  Future<void> _retryCache() async {
+    final item = _cacheItem;
+    try {
+      if (item == null) {
+        await _cacheCurrent();
+        return;
+      }
+      await widget.offlineCacheRepository.retry(item.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   Widget _buildPanel() {
@@ -495,6 +590,25 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+                  if (widget.playable.canTrackHistory)
+                    CacheStatusButton(
+                      item: _alreadyLocal
+                          ? (_cacheItem ??
+                              OfflineCacheItem(
+                                sourceKey: widget.playable.sourceKey,
+                                vodId: widget.playable.vodId,
+                                name: widget.playable.name,
+                                episodeId: widget.playable.episodeId,
+                                status: OfflineCacheStatus.completed,
+                                createdAtMs: 0,
+                              ))
+                          : _cacheItem,
+                      onCache: _cacheCurrent,
+                      onCancel: _cancelCache,
+                      onRetry: _retryCache,
+                      color: Colors.white,
+                      iconSize: 22,
+                    ),
                 ],
               ),
             ),

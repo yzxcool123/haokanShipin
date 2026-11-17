@@ -49,6 +49,14 @@ class Playable {
 
   bool get isHls => url.toLowerCase().contains('.m3u8');
 
+  bool get isLocal {
+    final value = url.trim();
+    if (value.isEmpty) return false;
+    if (value.startsWith('file:') || value.startsWith('/')) return true;
+    final uri = Uri.tryParse(value);
+    return uri != null && uri.scheme == 'file';
+  }
+
   bool get canTrackHistory => sourceKey.isNotEmpty && vodId.isNotEmpty;
 
   Playable copyWith({

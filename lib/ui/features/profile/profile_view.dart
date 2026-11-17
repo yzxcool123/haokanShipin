@@ -91,7 +91,7 @@ class ProfileView extends StatelessWidget {
                     _MenuTile(
                       icon: Icons.download_rounded,
                       title: '已下载',
-                      subtitle: '稍后推出',
+                      subtitle: viewModel.downloadSubtitle,
                       onTap: () => context.push('/downloads'),
                     ),
                     Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
