@@ -41,7 +41,7 @@ class SourceRepository extends ChangeNotifier {
   final Map<String, SourceAvailability> _availability = {};
   int _probeGeneration = 0;
   MediaSource? _localHuangguo;
-  ContentMode _contentMode = ContentMode.adult;
+  ContentMode _contentMode = ContentMode.healthy;
   bool _autoSelected = false;
 
   ContentMode get contentMode => _contentMode;
@@ -97,6 +97,9 @@ class SourceRepository extends ChangeNotifier {
     _bundled = _withLocalHuangguo(cached.isNotEmpty ? cached : bundled);
     _custom = _loadCustom();
     _contentMode = _loadContentMode();
+    if (_prefs.getString(_contentModeKey) == null) {
+      await _prefs.setString(_contentModeKey, _contentMode.name);
+    }
     _selectedKeyValue = _prefs.getString(_selectedKey);
     _autoSelected = false;
     await _reconcileSelection();
@@ -222,10 +225,10 @@ class SourceRepository extends ChangeNotifier {
 
   ContentMode _loadContentMode() {
     switch (_prefs.getString(_contentModeKey)) {
-      case 'healthy':
-        return ContentMode.healthy;
-      default:
+      case 'adult':
         return ContentMode.adult;
+      default:
+        return ContentMode.healthy;
     }
   }
 
