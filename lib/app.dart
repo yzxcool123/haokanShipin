@@ -17,6 +17,7 @@ import 'ui/features/profile/downloads_view.dart';
 import 'ui/features/profile/favorites_view.dart';
 import 'ui/features/profile/history_view.dart';
 import 'ui/features/profile/profile_view.dart';
+import 'ui/features/profile/settings_view.dart';
 import 'ui/features/profile/profile_view_model.dart';
 import 'ui/features/search/search_view.dart';
 import 'ui/features/search/search_view_model.dart';
@@ -140,6 +141,12 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
         GoRoute(
           path: '/about',
           builder: (context, state) => const AboutView(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => SettingsView(
+            sourceRepository: widget.sourceRepository,
+          ),
         ),
         GoRoute(
           path: '/detail/:sourceKey/:id',

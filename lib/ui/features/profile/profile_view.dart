@@ -103,6 +103,13 @@ class ProfileView extends StatelessWidget {
                     ),
                     Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
                     _MenuTile(
+                      icon: Icons.settings_rounded,
+                      title: '设置',
+                      subtitle: viewModel.contentModeLabel,
+                      onTap: () => context.push('/settings'),
+                    ),
+                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    _MenuTile(
                       icon: Icons.info_outline_rounded,
                       title: '关于',
                       subtitle: viewModel.versionLabel,

@@ -27,6 +27,12 @@ class MediaSource {
 
   bool get isSupported => isCms || isHuangguo;
 
+  bool get isAdultMarked => name.startsWith('🔞');
+
+  bool get isHealthyMarked => name.startsWith('🔵');
+
+  bool get isVisibleInHealthyMode => !isAdultMarked && !isHuangguo;
+
   factory MediaSource.fromJson(
     Map<String, dynamic> json, {
     bool custom = false,

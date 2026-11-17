@@ -41,6 +41,9 @@ class ProfileViewModel extends ChangeNotifier {
     return _sourceRepository.displayNameOf(current);
   }
 
+  String get contentModeLabel =>
+      _sourceRepository.contentMode == ContentMode.healthy ? '健康模式' : '成人模式';
+
   Future<void> _loadVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();

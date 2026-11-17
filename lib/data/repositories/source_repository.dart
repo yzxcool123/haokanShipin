@@ -10,6 +10,8 @@ import '../services/json_http.dart';
 
 enum SourceAvailability { unknown, checking, available, unavailable }
 
+enum ContentMode { healthy, adult }
+
 class SourceRepository extends ChangeNotifier {
   SourceRepository({
     required SharedPreferences prefs,
@@ -25,6 +27,7 @@ class SourceRepository extends ChangeNotifier {
   static const _selectedKey = 'selected_source_key';
   static const _customKey = 'custom_sources_json';
   static const _remoteCacheKey = 'remote_sources_json';
+  static const _contentModeKey = 'content_mode_v1';
   static const _probeTimeout = Duration(seconds: 8);
   static const _probeConcurrency = 5;
 
@@ -38,13 +41,26 @@ class SourceRepository extends ChangeNotifier {
   final Map<String, SourceAvailability> _availability = {};
   int _probeGeneration = 0;
   MediaSource? _localHuangguo;
+  ContentMode _contentMode = ContentMode.adult;
+  bool _autoSelected = false;
 
-  List<MediaSource> get sources {
+  ContentMode get contentMode => _contentMode;
+
+  List<MediaSource> get allSources {
     final byKey = <String, MediaSource>{};
     for (final source in [..._bundled, ..._custom]) {
       byKey[source.key] = source;
     }
     return byKey.values.toList();
+  }
+
+  List<MediaSource> get sources {
+    final list = allSources;
+    if (_contentMode == ContentMode.adult) return list;
+    return [
+      for (final source in list)
+        if (source.isVisibleInHealthyMode) source,
+    ];
   }
 
   MediaSource? get current {
@@ -53,7 +69,7 @@ class SourceRepository extends ChangeNotifier {
     for (final source in list) {
       if (source.key == _selectedKeyValue) return source;
     }
-    return list.first;
+    return null;
   }
 
   SourceAvailability availabilityOf(String key) {
@@ -80,9 +96,21 @@ class SourceRepository extends ChangeNotifier {
     final cached = _loadRemoteCache();
     _bundled = _withLocalHuangguo(cached.isNotEmpty ? cached : bundled);
     _custom = _loadCustom();
+    _contentMode = _loadContentMode();
     _selectedKeyValue = _prefs.getString(_selectedKey);
-    if (current == null && sources.isNotEmpty) {
-      _selectedKeyValue = sources.first.key;
+    _autoSelected = false;
+    await _reconcileSelection();
+    notifyListeners();
+  }
+
+  Future<void> setContentMode(ContentMode mode) async {
+    if (_contentMode == mode) return;
+    _contentMode = mode;
+    await _prefs.setString(_contentModeKey, mode.name);
+    if (mode == ContentMode.adult) {
+      await _applyDefaultSelection(force: true);
+    } else {
+      await _reconcileSelection();
     }
     notifyListeners();
   }
@@ -103,6 +131,7 @@ class SourceRepository extends ChangeNotifier {
         .timeout(const Duration(seconds: 15));
     _bundled = _withLocalHuangguo(_parseSitesMap(data));
     await _prefs.setString(_remoteCacheKey, jsonEncode(data));
+    await _reconcileSelection();
     notifyListeners();
   }
 
@@ -142,6 +171,8 @@ class SourceRepository extends ChangeNotifier {
         (_) => worker(),
       ),
     );
+    if (generation != _probeGeneration) return;
+    await _promoteHealthyDefaultIfNeeded();
   }
 
   Future<SourceAvailability> _probe(MediaSource source) async {
@@ -156,6 +187,7 @@ class SourceRepository extends ChangeNotifier {
   }
 
   Future<void> select(MediaSource source) async {
+    _autoSelected = false;
     _selectedKeyValue = source.key;
     await _prefs.setString(_selectedKey, source.key);
     notifyListeners();
@@ -183,11 +215,73 @@ class SourceRepository extends ChangeNotifier {
     _availability.remove(source.key);
     await _saveCustom();
     if (_selectedKeyValue == source.key) {
-      _selectedKeyValue = sources.isEmpty ? null : sources.first.key;
-      if (_selectedKeyValue != null) {
-        await _prefs.setString(_selectedKey, _selectedKeyValue!);
+      await _applyDefaultSelection(force: true);
+    }
+    notifyListeners();
+  }
+
+  ContentMode _loadContentMode() {
+    switch (_prefs.getString(_contentModeKey)) {
+      case 'healthy':
+        return ContentMode.healthy;
+      default:
+        return ContentMode.adult;
+    }
+  }
+
+  Future<void> _reconcileSelection() async {
+    if (current != null || sources.isEmpty) return;
+    await _applyDefaultSelection(force: true);
+  }
+
+  Future<void> _applyDefaultSelection({bool force = false}) async {
+    final next = _defaultSourceForMode;
+    if (next == null) return;
+    if (!force && current?.key == next.key) return;
+    _autoSelected = true;
+    _selectedKeyValue = next.key;
+    await _prefs.setString(_selectedKey, next.key);
+  }
+
+  MediaSource? get _defaultSourceForMode {
+    if (_contentMode == ContentMode.healthy) {
+      return _defaultHealthySource;
+    }
+    return allSources.where((source) => source.isHuangguo).firstOrNull ??
+        sources.firstOrNull;
+  }
+
+  MediaSource? get _defaultHealthySource {
+    final blue = [
+      for (final source in sources)
+        if (source.isHealthyMarked && source.isSupported) source,
+    ];
+    for (final source in blue) {
+      if (availabilityOf(source.key) == SourceAvailability.available) {
+        return source;
       }
     }
+    for (final source in blue) {
+      if (availabilityOf(source.key) != SourceAvailability.unavailable) {
+        return source;
+      }
+    }
+    return blue.firstOrNull ??
+        sources.where((source) => source.isSupported).firstOrNull ??
+        sources.firstOrNull;
+  }
+
+  Future<void> _promoteHealthyDefaultIfNeeded() async {
+    if (_contentMode != ContentMode.healthy || !_autoSelected) return;
+    final selected = current;
+    if (selected != null &&
+        availabilityOf(selected.key) == SourceAvailability.available) {
+      return;
+    }
+    final next = _defaultHealthySource;
+    if (next == null || next.key == selected?.key) return;
+    _selectedKeyValue = next.key;
+    await _prefs.setString(_selectedKey, next.key);
     notifyListeners();
   }
 
