@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:pointycastle/export.dart';
 
 import 'api_exception.dart';
-import 'json_http.dart';
 
 class HuangguoDxPlay {
   const HuangguoDxPlay({
@@ -22,10 +21,22 @@ class HuangguoDxPlay {
 /// 源站 dx150-edge-v1：ECDH P-256 + HKDF-SHA256 + AES-GCM。
 /// 内层播放请求：POST /api/videos/{id}/episodes/{ep}/playback
 class HuangguoDx150 {
-  HuangguoDx150({required this.site, required JsonHttp http}) : _http = http;
+  HuangguoDx150({
+    required String Function() siteOf,
+    required Future<Map<String, dynamic>> Function(
+      String path,
+      Map<String, Object?> body,
+    ) post,
+  })  : _siteOf = siteOf,
+        _postSite = post;
 
-  final String site;
-  final JsonHttp _http;
+  final String Function() _siteOf;
+  final Future<Map<String, dynamic>> Function(
+    String path,
+    Map<String, Object?> body,
+  ) _postSite;
+
+  String get site => _siteOf();
 
   static const _protocol = 'dx150-edge-v1';
   static const _endpoints = {
@@ -71,7 +82,9 @@ class HuangguoDx150 {
     return HuangguoDxPlay(
       url: url,
       hevc: '${streams['hevc'] ?? ''}',
-      cdn: data['cdn'] is Map ? Map<String, dynamic>.from(data['cdn'] as Map) : null,
+      cdn: data['cdn'] is Map
+          ? Map<String, dynamic>.from(data['cdn'] as Map)
+          : null,
     );
   }
 
@@ -119,7 +132,9 @@ class HuangguoDx150 {
     if (inner is! Map) {
       throw ApiException('播放通道返回异常。');
     }
-    final status = inner['status'] is int ? inner['status'] as int : int.tryParse('${inner['status']}') ?? 0;
+    final status = inner['status'] is int
+        ? inner['status'] as int
+        : int.tryParse('${inner['status']}') ?? 0;
     final bodyRaw = inner['body'];
     final body = bodyRaw is String ? utf8.decode(_unb64(bodyRaw)) : '';
     return _DxResponse(status: status, body: body);
@@ -172,16 +187,7 @@ class HuangguoDx150 {
     if (path == null) {
       throw ApiException('未知的播放通道。');
     }
-    return _http.post(
-      Uri.parse('$site$path'),
-      headers: {
-        'User-Agent': JsonHttp.defaultUa,
-        'Accept': 'application/json, text/plain, */*',
-        'Origin': site,
-        'Referer': '$site/',
-      },
-      body: body,
-    );
+    return _postSite(path, body);
   }
 
   static Map<String, String> _packet(String method, String path, Object? obj) {
@@ -199,7 +205,8 @@ class HuangguoDx150 {
     ECDomainParameters domain,
   ) {
     final gen = ECKeyGenerator()
-      ..init(ParametersWithRandom(ECKeyGeneratorParameters(domain), _secureRandom()));
+      ..init(ParametersWithRandom(
+          ECKeyGeneratorParameters(domain), _secureRandom()));
     return gen.generateKeyPair();
   }
 
@@ -233,7 +240,8 @@ class HuangguoDx150 {
     return _i2osp(agreement.calculateAgreement(ECPublicKey(point, domain)), 32);
   }
 
-  static Uint8List _hkdf(Uint8List ikm, Uint8List salt, List<int> info, int length) {
+  static Uint8List _hkdf(
+      Uint8List ikm, Uint8List salt, List<int> info, int length) {
     final hkdf = HKDFKeyDerivator(SHA256Digest())
       ..init(HkdfParameters(ikm, length, salt, Uint8List.fromList(info)));
     final out = Uint8List(length);
@@ -288,7 +296,8 @@ class HuangguoDx150 {
     return Uint8List.fromList(base64Decode(s));
   }
 
-  static Uint8List _unb64(String value) => Uint8List.fromList(base64Decode(value));
+  static Uint8List _unb64(String value) =>
+      Uint8List.fromList(base64Decode(value));
 
   static int _asInt(Object? value, int fallback) {
     if (value is int) return value;

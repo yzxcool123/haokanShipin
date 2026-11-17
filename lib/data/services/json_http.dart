@@ -28,7 +28,8 @@ class JsonHttp {
         },
         responseType: ResponseType.bytes,
         followRedirects: true,
-        validateStatus: (status) => status != null && status >= 200 && status < 300,
+        validateStatus: (status) =>
+            status != null && status >= 200 && status < 300,
       ),
     );
     dio.httpClientAdapter = IOHttpClientAdapter(
@@ -45,8 +46,15 @@ class JsonHttp {
     Uri uri, {
     Map<String, String>? headers,
     Duration timeout = const Duration(seconds: 20),
+    int attempts = 8,
   }) {
-    return send(uri, method: 'GET', headers: headers, timeout: timeout);
+    return send(
+      uri,
+      method: 'GET',
+      headers: headers,
+      timeout: timeout,
+      attempts: attempts,
+    );
   }
 
   Future<Map<String, dynamic>> post(
@@ -54,6 +62,7 @@ class JsonHttp {
     Map<String, String>? headers,
     Object? body,
     Duration timeout = const Duration(seconds: 20),
+    int attempts = 8,
   }) {
     return send(
       uri,
@@ -61,6 +70,7 @@ class JsonHttp {
       headers: headers,
       body: body,
       timeout: timeout,
+      attempts: attempts,
     );
   }
 
@@ -70,6 +80,7 @@ class JsonHttp {
     Map<String, String>? headers,
     Object? body,
     Duration timeout = const Duration(seconds: 20),
+    int attempts = 8,
   }) async {
     final reqHeaders = <String, dynamic>{
       'User-Agent': defaultUa,
@@ -79,7 +90,8 @@ class JsonHttp {
 
     DioException? lastDio;
     try {
-      for (var attempt = 0; attempt < 8; attempt++) {
+      final maxAttempts = attempts < 1 ? 1 : attempts;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           final response = await _client.request<List<int>>(
             uri.toString(),
@@ -89,7 +101,9 @@ class JsonHttp {
             options: Options(
               method: method,
               headers: reqHeaders,
-              contentType: method.toUpperCase() == 'POST' ? Headers.jsonContentType : null,
+              contentType: method.toUpperCase() == 'POST'
+                  ? Headers.jsonContentType
+                  : null,
               sendTimeout: timeout,
               receiveTimeout: timeout,
               responseType: ResponseType.bytes,
@@ -100,7 +114,7 @@ class JsonHttp {
           rethrow;
         } on DioException catch (e) {
           lastDio = e;
-          if (!_shouldRetry(e) || attempt == 7) {
+          if (!_shouldRetry(e) || attempt == maxAttempts - 1) {
             final error = _fromDio(e);
             if (kDebugMode) {
               debugPrint('请求失败 ${uri.toString()} -> ${error.message}');
@@ -119,7 +133,6 @@ class JsonHttp {
       throw ApiException('网络请求失败：$e');
     }
   }
-
 
   Future<Uint8List> getBytes(
     Uri uri, {
@@ -149,7 +162,8 @@ class JsonHttp {
           if (status < 200 || status >= 300) {
             throw ApiException('接口返回 $status');
           }
-          return Uint8List.fromList(_maybeGunzip(response.data ?? const <int>[]));
+          return Uint8List.fromList(
+              _maybeGunzip(response.data ?? const <int>[]));
         } on ApiException {
           rethrow;
         } on DioException catch (e) {

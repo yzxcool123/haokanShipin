@@ -35,14 +35,19 @@ class SourcesView extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('添加')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('添加')),
           ],
         );
       },
     );
     if (confirmed == true) {
-      await viewModel.addCustom(name: nameController.text, api: apiController.text);
+      await viewModel.addCustom(
+          name: nameController.text, api: apiController.text);
     }
   }
 
@@ -56,7 +61,8 @@ class SourcesView extends StatelessWidget {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final message = viewModel.message;
             if (message == null || !context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text(message)));
             viewModel.message = null;
           });
         }
@@ -65,8 +71,9 @@ class SourcesView extends StatelessWidget {
             title: const Text('数据源'),
             actions: [
               IconButton(
-                tooltip: '刷新远程配置',
-                onPressed: viewModel.refreshing ? null : viewModel.refreshRemote,
+                tooltip: '刷新源列表并检测可用性',
+                onPressed:
+                    viewModel.refreshing ? null : viewModel.refreshRemote,
                 icon: viewModel.refreshing
                     ? const SizedBox(
                         width: 18,
@@ -93,7 +100,8 @@ class SourcesView extends StatelessWidget {
                 unavailable: viewModel.isUnavailable(source),
                 selected: source.key == currentKey,
                 onTap: () => viewModel.select(source),
-                onDelete: source.custom ? () => viewModel.removeCustom(source) : null,
+                onDelete:
+                    source.custom ? () => viewModel.removeCustom(source) : null,
               );
             },
           ),
@@ -133,15 +141,18 @@ class _SourceTile extends StatelessWidget {
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
         color: selected ? Theme.of(context).colorScheme.primary : null,
       ),
-      title: Text(title, style: titleColor == null ? null : TextStyle(color: titleColor)),
-      subtitle: Text('$subtitle\n${source.api}', maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(title,
+          style: titleColor == null ? null : TextStyle(color: titleColor)),
+      subtitle: Text('$subtitle\n${source.api}',
+          maxLines: 2, overflow: TextOverflow.ellipsis),
       isThreeLine: true,
       enabled: source.isSupported,
       selected: selected,
       onTap: source.isSupported ? onTap : null,
       trailing: onDelete == null
           ? null
-          : IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete),
+          : IconButton(
+              icon: const Icon(Icons.delete_outline), onPressed: onDelete),
     );
   }
 }

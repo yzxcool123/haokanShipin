@@ -16,10 +16,12 @@ class SourcesViewModel extends ChangeNotifier {
   bool refreshing = false;
   String? message;
 
-  String displayNameOf(MediaSource source) => _sourceRepository.displayNameOf(source);
+  String displayNameOf(MediaSource source) =>
+      _sourceRepository.displayNameOf(source);
 
   bool isUnavailable(MediaSource source) =>
-      _sourceRepository.availabilityOf(source.key) == SourceAvailability.unavailable;
+      _sourceRepository.availabilityOf(source.key) ==
+      SourceAvailability.unavailable;
 
   Future<void> select(MediaSource source) async {
     await _sourceRepository.select(source);
@@ -27,7 +29,9 @@ class SourcesViewModel extends ChangeNotifier {
 
   Future<void> addCustom({required String name, required String api}) async {
     final uri = Uri.tryParse(api.trim());
-    if (uri == null || !(uri.isScheme('http') || uri.isScheme('https')) || uri.host.isEmpty) {
+    if (uri == null ||
+        !(uri.isScheme('http') || uri.isScheme('https')) ||
+        uri.host.isEmpty) {
       message = '请输入有效的接口地址，例如 https://example.com/api.php/provide/vod/';
       notifyListeners();
       return;
@@ -45,16 +49,23 @@ class SourcesViewModel extends ChangeNotifier {
     refreshing = true;
     message = null;
     notifyListeners();
+    Object? listError;
     try {
       await _sourceRepository.refreshRemote();
-      message = '源列表已更新';
     } catch (e) {
-      message = '刷新失败：$e';
+      listError = e;
+    }
+    try {
+      await _sourceRepository.probeAll();
+      message = listError == null
+          ? '源列表已更新，并完成可用性检测'
+          : '源列表刷新失败，已按当前列表完成可用性检测：$listError';
+    } catch (e) {
+      message = listError == null ? '源列表已更新，但可用性检测失败：$e' : '刷新失败：$listError';
     } finally {
       refreshing = false;
       notifyListeners();
     }
-    await _sourceRepository.probeAll();
   }
 
   @override

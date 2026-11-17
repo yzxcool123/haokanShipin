@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -21,10 +22,24 @@ class HuangguoApiClient implements VodClient {
   @override
   final MediaSource source;
   final JsonHttp _http;
-  late final HuangguoDx150 _dx = HuangguoDx150(site: site, http: _http);
+  late final HuangguoDx150 _dx = HuangguoDx150(
+    siteOf: () => _currentSite,
+    post: (path, body) => _siteRequest('POST', path, body: body),
+  );
 
-  static const defaultWorker = 'https://huangguo-parser.13681235735.workers.dev';
-  static const site = 'https://huangguoai.io';
+  static const defaultWorker =
+      'https://huangguo-parser.13681235735.workers.dev';
+  static const officialSite = 'https://huangguoai.io';
+  static const site = officialSite;
+  // 用户提供的可直连镜像，优先于官网和 Worker，通常无需 VPN。
+  static const mirrorSites = [
+    'https://tju.ixgukkejj.cc',
+    'https://sysu.bmikbxhi.cc',
+    'https://sdu.ixgukkejj.cc',
+    'https://nku.bmikbxhi.cc',
+    'https://whu.ixgukkejj.cc',
+    'https://xjtu.bmikbxhi.cc',
+  ];
   static const origin = 'https://drdrdrrddrdr.github.io';
   static const referer = 'https://drdrdrrddrdr.github.io/huangguo-web/';
   // 与公开爬虫脚本中的签名密钥一致，站点可能会更换。
@@ -41,6 +56,14 @@ class HuangguoApiClient implements VodClient {
 
   // 始终使用本地适配的 Worker，不采用远程站点列表里返回的接口地址。
   String get _base => defaultWorker;
+
+  static const _siteTimeout = Duration(seconds: 8);
+
+  String? _activeSite;
+
+  List<String> get _siteCandidates => [...mirrorSites, officialSite];
+
+  String get _currentSite => _activeSite ?? mirrorSites.first;
 
   Map<String, String> _signHeaders(String pathWithQuery, {int shift = 0}) {
     final win = DateTime.now().millisecondsSinceEpoch ~/ 1000 ~/ 300 + shift;
@@ -61,7 +84,8 @@ class HuangguoApiClient implements VodClient {
     ApiException? last;
     for (final shift in const [0, -1, 1]) {
       try {
-        return await _http.get(uri, headers: _signHeaders(pathWithQuery, shift: shift));
+        return await _http.get(uri,
+            headers: _signHeaders(pathWithQuery, shift: shift));
       } on ApiException catch (e) {
         last = e;
         if (!e.message.contains('403') && !e.message.contains('401')) {
@@ -73,14 +97,94 @@ class HuangguoApiClient implements VodClient {
   }
 
   Future<Map<String, dynamic>> _siteGet(String pathWithQuery) {
-    return _http.get(
-      Uri.parse('$site$pathWithQuery'),
+    return _siteRequest('GET', pathWithQuery);
+  }
+
+  Future<Map<String, dynamic>> _siteRequest(
+    String method,
+    String pathWithQuery, {
+    Object? body,
+  }) async {
+    final preferred = _activeSite;
+    if (preferred != null) {
+      try {
+        return await _requestOneSite(preferred, method, pathWithQuery,
+            body: body);
+      } catch (_) {
+        if (_activeSite == preferred) {
+          _activeSite = null;
+        }
+      }
+    }
+
+    final bases = [
+      for (final base in _siteCandidates)
+        if (base != preferred) base,
+    ];
+    return _raceSites(bases, method, pathWithQuery, body: body);
+  }
+
+  Future<Map<String, dynamic>> _raceSites(
+    List<String> bases,
+    String method,
+    String pathWithQuery, {
+    Object? body,
+  }) async {
+    if (bases.isEmpty) {
+      throw ApiException('黄果站点请求失败。');
+    }
+    if (bases.length == 1) {
+      final data =
+          await _requestOneSite(bases.first, method, pathWithQuery, body: body);
+      return data;
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+    var remaining = bases.length;
+    Object? last;
+    for (final base in bases) {
+      () async {
+        try {
+          final data =
+              await _requestOneSite(base, method, pathWithQuery, body: body);
+          if (!completer.isCompleted) {
+            completer.complete(data);
+          }
+        } catch (e) {
+          last = e;
+          remaining--;
+          if (remaining <= 0 && !completer.isCompleted) {
+            completer.completeError(last ?? ApiException('黄果站点请求失败。'));
+          }
+        }
+      }();
+    }
+    return completer.future;
+  }
+
+  Future<Map<String, dynamic>> _requestOneSite(
+    String base,
+    String method,
+    String pathWithQuery, {
+    Object? body,
+  }) async {
+    final data = await _http.send(
+      Uri.parse('$base$pathWithQuery'),
+      method: method,
       headers: {
         'User-Agent': JsonHttp.defaultUa,
-        'Referer': '$site/',
-        'Origin': site,
+        'Referer': '$base/',
+        'Origin': base,
       },
+      body: body,
+      timeout: _siteTimeout,
+      attempts: 1,
     );
+    _activeSite ??= base;
+    if (kDebugMode) {
+      debugPrint('huangguo site $method $base$pathWithQuery');
+    }
+    return data;
   }
 
   Future<T> _siteThenWorker<T>(
@@ -102,7 +206,8 @@ class HuangguoApiClient implements VodClient {
     final payload = data['data'] is Map
         ? Map<String, dynamic>.from(data['data'] as Map)
         : data;
-    final rawItems = payload['items'] is List ? payload['items'] as List : const [];
+    final rawItems =
+        payload['items'] is List ? payload['items'] as List : const [];
     final pg = payload['pagination'];
     final mapItem = mapper ?? _toSiteItem;
     final items = <VodItem>[];
@@ -115,7 +220,9 @@ class HuangguoApiClient implements VodClient {
     return PagedVod(
       list: items,
       page: pg is Map ? _asInt(pg['page'], page) : page,
-      pageCount: pg is Map ? _asInt(pg['pages'], items.isEmpty ? page : page + 1) : (items.isEmpty ? page : page + 1),
+      pageCount: pg is Map
+          ? _asInt(pg['pages'], items.isEmpty ? page : page + 1)
+          : (items.isEmpty ? page : page + 1),
       total: pg is Map ? _asInt(pg['total'], items.length) : items.length,
     );
   }
@@ -133,7 +240,7 @@ class HuangguoApiClient implements VodClient {
     if (RegExp(r'^https?:\/\/', caseSensitive: false).hasMatch(u)) {
       return u;
     }
-    if (u.startsWith('/')) return '$site$u';
+    if (u.startsWith('/')) return '$_currentSite$u';
     return u;
   }
 
@@ -150,7 +257,8 @@ class HuangguoApiClient implements VodClient {
       remarks: _asString(raw['vod_remarks']),
       score: _asString(raw['vod_score'] ?? raw['score']),
       typeName: typeName,
-      description: _asString(raw['vod_desc'] ?? raw['description'] ?? raw['vod_content']),
+      description: _asString(
+          raw['vod_desc'] ?? raw['description'] ?? raw['vod_content']),
     );
   }
 
@@ -220,7 +328,8 @@ class HuangguoApiClient implements VodClient {
     if (key.isNotEmpty) {
       return _search(key, page);
     }
-    final tid = (categoryId == null || categoryId.isEmpty) ? 'recommend' : categoryId;
+    final tid =
+        (categoryId == null || categoryId.isEmpty) ? 'recommend' : categoryId;
     return _listPage(tid, page);
   }
 
@@ -233,19 +342,24 @@ class HuangguoApiClient implements VodClient {
     if (tid.startsWith('topic:')) {
       final slug = Uri.encodeComponent(tid.substring(6));
       final data = await _siteGet('/api/topics/$slug?page=$page&size=$size');
-      final videos = data['data'] is Map ? (data['data'] as Map)['videos'] : null;
-      final itemsRaw =
-          videos is Map && videos['items'] is List ? videos['items'] as List : const [];
+      final videos =
+          data['data'] is Map ? (data['data'] as Map)['videos'] : null;
+      final itemsRaw = videos is Map && videos['items'] is List
+          ? videos['items'] as List
+          : const [];
       final pagination = videos is Map ? videos['pagination'] : null;
       final items = <VodItem>[];
       for (final item in itemsRaw) {
-        if (item is Map) items.add(_toSiteItem(Map<String, dynamic>.from(item)));
+        if (item is Map)
+          items.add(_toSiteItem(Map<String, dynamic>.from(item)));
       }
       return PagedVod(
         list: items,
         page: page,
         pageCount: pagination is Map ? _asInt(pagination['pages'], page) : page,
-        total: pagination is Map ? _asInt(pagination['total'], items.length) : items.length,
+        total: pagination is Map
+            ? _asInt(pagination['total'], items.length)
+            : items.length,
       );
     }
 
@@ -305,11 +419,13 @@ class HuangguoApiClient implements VodClient {
     final encoded = Uri.encodeComponent(keyword);
     return _siteThenWorker(
       () async {
-        final site = await _siteGet('/api/search?q=$encoded&page=$page&size=20');
+        final site =
+            await _siteGet('/api/search?q=$encoded&page=$page&size=20');
         return _fromSiteList(site, page);
       },
       () async {
-        final data = await _workerGet('/api/search/$encoded?page=$page&size=20');
+        final data =
+            await _workerGet('/api/search/$encoded?page=$page&size=20');
         return _fromWorkerList(data, page);
       },
     );
@@ -339,7 +455,9 @@ class HuangguoApiClient implements VodClient {
     if (raw == null && id.startsWith('archives_')) {
       final pid = id.replaceFirst('archives_', '');
       final site = await _siteGet('/api/posts/${Uri.encodeComponent(pid)}');
-      final pd = site['data'] is Map ? Map<String, dynamic>.from(site['data'] as Map) : {};
+      final pd = site['data'] is Map
+          ? Map<String, dynamic>.from(site['data'] as Map)
+          : {};
       raw = {
         'vod_id': id,
         'vod_name': _asString(pd['title']),
@@ -363,7 +481,9 @@ class HuangguoApiClient implements VodClient {
         if (ep.isEmpty) continue;
         episodes.add(Episode(
           id: ep,
-          title: _asString(map['title']).isEmpty ? '第$ep集' : _asString(map['title']),
+          title: _asString(map['title']).isEmpty
+              ? '第$ep集'
+              : _asString(map['title']),
           url: _asString(map['url']).isEmpty ? null : _asString(map['url']),
         ));
       }
@@ -403,16 +523,14 @@ class HuangguoApiClient implements VodClient {
 
   Future<List<Map<String, dynamic>>> _postVideos(String pid) async {
     try {
-      final data = await _http.post(
-        Uri.parse('$site/api/posts/${Uri.encodeComponent(pid)}/playback'),
-        headers: {
-          'User-Agent': JsonHttp.defaultUa,
-          'Referer': '$site/',
-          'Origin': site,
-        },
+      final data = await _siteRequest(
+        'POST',
+        '/api/posts/${Uri.encodeComponent(pid)}/playback',
         body: {},
       );
-      final payload = data['data'] is Map ? Map<String, dynamic>.from(data['data'] as Map) : {};
+      final payload = data['data'] is Map
+          ? Map<String, dynamic>.from(data['data'] as Map)
+          : {};
       final videos = payload['videos'];
       if (videos is! List) return const [];
       final out = <Map<String, dynamic>>[];
@@ -490,7 +608,7 @@ class HuangguoApiClient implements VodClient {
   Map<String, String> _playHeaders({Object? cdn}) {
     final headers = <String, String>{
       'User-Agent': JsonHttp.defaultUa,
-      'Referer': '$site/',
+      'Referer': '$_currentSite/',
     };
     if (cdn is Map) {
       final authKey = _asString(cdn['authKey']);
