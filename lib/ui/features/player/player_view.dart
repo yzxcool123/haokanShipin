@@ -23,7 +23,7 @@ class PlayerView extends StatefulWidget {
 }
 
 class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
-  static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+  static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
   static const _accent = Color(0xFF7C9CFF);
   static const _seekStep = Duration(seconds: 10);
   static const _hideAfter = Duration(seconds: 5);
