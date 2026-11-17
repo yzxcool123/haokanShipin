@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/vod_item.dart';
+import 'cover_image.dart';
 
 class VodCard extends StatelessWidget {
   const VodCard({super.key, required this.item, required this.onTap});
@@ -25,14 +25,7 @@ class VodCard extends StatelessWidget {
                 children: [
                   ColoredBox(
                     color: const Color(0xFF2A2B31),
-                    child: item.pic.isEmpty
-                        ? const Icon(Icons.movie_outlined, size: 36)
-                        : CachedNetworkImage(
-                            imageUrl: item.pic,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) =>
-                                const Icon(Icons.movie_outlined, size: 36),
-                          ),
+                    child: CoverImage(url: item.pic, sourceKey: item.sourceKey),
                   ),
                   if (item.remarks.isNotEmpty)
                     Positioned(

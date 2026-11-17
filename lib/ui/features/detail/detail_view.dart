@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../domain/models/playable.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import 'detail_view_model.dart';
 
@@ -83,7 +83,7 @@ class _DetailViewState extends State<DetailView> {
                               color: Color(0xFF2A2B31),
                               child: Icon(Icons.movie_outlined),
                             )
-                          : CachedNetworkImage(imageUrl: item.pic, fit: BoxFit.cover),
+                          : CoverImage(url: item.pic, sourceKey: item.sourceKey),
                     ),
                   ),
                   const SizedBox(width: 16),

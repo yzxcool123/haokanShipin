@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:crypto/crypto.dart';
 import '../../domain/models/category.dart';
 import '../../domain/models/media_source.dart';
@@ -8,6 +10,7 @@ import '../../domain/models/playable.dart';
 import '../../domain/models/vod_detail.dart';
 import '../../domain/models/vod_item.dart';
 import 'api_exception.dart';
+import 'huangguo_dx150.dart';
 import 'json_http.dart';
 import 'vod_client.dart';
 
@@ -18,9 +21,10 @@ class HuangguoApiClient implements VodClient {
   @override
   final MediaSource source;
   final JsonHttp _http;
+  late final HuangguoDx150 _dx = HuangguoDx150(site: site, http: _http);
 
   static const defaultWorker = 'https://huangguo-parser.13681235735.workers.dev';
-  static const site = 'https://huangguoai.com';
+  static const site = 'https://huangguoai.io';
   static const origin = 'https://drdrdrrddrdr.github.io';
   static const referer = 'https://drdrdrrddrdr.github.io/huangguo-web/';
   // 与公开爬虫脚本中的签名密钥一致，站点可能会更换。
@@ -84,6 +88,43 @@ class HuangguoApiClient implements VodClient {
     );
   }
 
+  Future<T> _siteThenWorker<T>(
+    Future<T> Function() siteCall,
+    Future<T> Function() workerCall,
+  ) async {
+    try {
+      return await siteCall();
+    } catch (_) {
+      return workerCall();
+    }
+  }
+
+  PagedVod _fromSiteList(
+    Map<String, dynamic> data,
+    int page, {
+    VodItem Function(Map<String, dynamic>)? mapper,
+  }) {
+    final payload = data['data'] is Map
+        ? Map<String, dynamic>.from(data['data'] as Map)
+        : data;
+    final rawItems = payload['items'] is List ? payload['items'] as List : const [];
+    final pg = payload['pagination'];
+    final mapItem = mapper ?? _toSiteItem;
+    final items = <VodItem>[];
+    for (final item in rawItems) {
+      if (item is Map) {
+        final vod = mapItem(Map<String, dynamic>.from(item));
+        if (vod.id.isNotEmpty) items.add(vod);
+      }
+    }
+    return PagedVod(
+      list: items,
+      page: pg is Map ? _asInt(pg['page'], page) : page,
+      pageCount: pg is Map ? _asInt(pg['pages'], items.isEmpty ? page : page + 1) : (items.isEmpty ? page : page + 1),
+      total: pg is Map ? _asInt(pg['total'], items.length) : items.length,
+    );
+  }
+
   String _asString(Object? value) => value == null ? '' : '$value';
 
   int _asInt(Object? value, [int fallback = 0]) {
@@ -95,10 +136,10 @@ class HuangguoApiClient implements VodClient {
     final u = _asString(value);
     if (u.isEmpty) return '';
     if (RegExp(r'^https?:\/\/', caseSensitive: false).hasMatch(u)) {
-      return '$_base/media?url=${Uri.encodeComponent(u)}';
+      return u;
     }
-    if (u.startsWith('/')) return '$_base$u';
-    return '$_base/$u';
+    if (u.startsWith('/')) return '$site$u';
+    return u;
   }
 
   VodItem _toItem(Map<String, dynamic> raw) {
@@ -170,24 +211,7 @@ class HuangguoApiClient implements VodClient {
 
   @override
   Future<List<VodCategory>> categories() async {
-    try {
-      final data = await _workerGet('/api/all');
-      final raw = data['categories'];
-      if (raw is List && raw.isNotEmpty) {
-        final list = <VodCategory>[];
-        for (final item in raw) {
-          if (item is! Map) continue;
-          final map = Map<String, dynamic>.from(item);
-          final id = _asString(map['type_id']);
-          final name = _asString(map['type_name']);
-          if (id.isEmpty || name.isEmpty) continue;
-          list.add(VodCategory(id: id, name: name));
-        }
-        if (list.isNotEmpty) return list;
-      }
-    } catch (_) {
-      // 首页分类失败时使用内置分类，不影响后续列表请求
-    }
+    // 官方前端已改为直连源站，分类枚举也是内置的；不再先打会超时的 Worker。
     return fallbackCategories;
   }
 
@@ -208,27 +232,7 @@ class HuangguoApiClient implements VodClient {
   Future<PagedVod> _listPage(String tid, int page) async {
     const size = 20;
     if (tid == 'recommend') {
-      final data = await _workerGet('/api/all');
-      final sections = data['sections'];
-      List<dynamic> rawList = const [];
-      var total = 0;
-      var pageCount = 1;
-      if (sections is Map && sections['recommend'] is Map) {
-        final rec = Map<String, dynamic>.from(sections['recommend'] as Map);
-        if (rec['list'] is List) rawList = rec['list'] as List;
-        total = _asInt(rec['total'], rawList.length);
-        pageCount = _asInt(rec['pagecount'], 1);
-      }
-      if (rawList.isEmpty) {
-        return _listPage('ai-duanju', page);
-      }
-      final items = <VodItem>[];
-      for (final item in rawList) {
-        if (item is Map) {
-          items.add(_toItem(Map<String, dynamic>.from(item)));
-        }
-      }
-      return PagedVod(list: items, page: 1, pageCount: pageCount, total: total);
+      return _listPage('ai-duanju', page);
     }
 
     if (tid.startsWith('topic:')) {
@@ -252,76 +256,90 @@ class HuangguoApiClient implements VodClient {
 
     if (tid.startsWith('chigua')) {
       final cate = tid.contains(':') ? tid.split(':')[1] : 'all';
-      final data = await _workerGet(
-        '/api/chigua?cate=${Uri.encodeComponent(cate)}&page=$page&size=$size',
-      );
-      final workerPage = _fromWorkerList(data, page);
-      if (workerPage.list.isNotEmpty) return workerPage;
-      final site = await _siteGet(
-        '/api/posts?cate=${Uri.encodeComponent(cate)}&page=$page&size=$size',
-      );
-      final payload = site['data'] is Map ? Map<String, dynamic>.from(site['data'] as Map) : {};
-      final rawItems = payload['items'] is List ? payload['items'] as List : const [];
-      final pg = payload['pagination'];
-      final items = <VodItem>[];
-      for (final item in rawItems) {
-        if (item is Map) items.add(_toPostItem(Map<String, dynamic>.from(item)));
-      }
-      return PagedVod(
-        list: items,
-        page: page,
-        pageCount: pg is Map ? _asInt(pg['pages'], page) : page,
-        total: pg is Map ? _asInt(pg['total'], items.length) : items.length,
+      return _siteThenWorker(
+        () async {
+          final site = await _siteGet(
+            '/api/posts?cate=${Uri.encodeComponent(cate)}&page=$page&size=$size',
+          );
+          return _fromSiteList(site, page, mapper: _toPostItem);
+        },
+        () async {
+          final data = await _workerGet(
+            '/api/chigua?cate=${Uri.encodeComponent(cate)}&page=$page&size=$size',
+          );
+          return _fromWorkerList(data, page);
+        },
       );
     }
 
     if (tid.startsWith('rank:')) {
       final kind = tid.substring(5);
-      final data = await _workerGet(
-        '/api/ranks/${Uri.encodeComponent(kind)}?page=$page&size=$size',
+      return _siteThenWorker(
+        () async {
+          final data = await _siteGet(
+            '/api/ranks/${Uri.encodeComponent(kind)}?page=$page&size=$size',
+          );
+          return _fromSiteList(data, page);
+        },
+        () async {
+          final data = await _workerGet(
+            '/api/ranks/${Uri.encodeComponent(kind)}?page=$page&size=$size',
+          );
+          return _fromWorkerList(data, page);
+        },
       );
-      return _fromWorkerList(data, page);
     }
 
-    final data = await _workerGet(
-      '/api/category/${Uri.encodeComponent(tid)}?page=$page&size=$size&sort=latest',
+    return _siteThenWorker(
+      () async {
+        final data = await _siteGet(
+          '/api/videos/category/${Uri.encodeComponent(tid)}?page=$page&size=$size&sort=latest',
+        );
+        return _fromSiteList(data, page);
+      },
+      () async {
+        final data = await _workerGet(
+          '/api/category/${Uri.encodeComponent(tid)}?page=$page&size=$size&sort=latest',
+        );
+        return _fromWorkerList(data, page);
+      },
     );
-    return _fromWorkerList(data, page);
   }
 
   Future<PagedVod> _search(String keyword, int page) async {
     final encoded = Uri.encodeComponent(keyword);
-    try {
-      final data = await _workerGet('/api/search/$encoded?page=$page&size=20');
-      final result = _fromWorkerList(data, page);
-      if (result.list.isNotEmpty) return result;
-    } catch (_) {}
-    final site = await _siteGet('/api/search?q=$encoded&page=$page&size=20');
-    final payload = site['data'] is Map ? Map<String, dynamic>.from(site['data'] as Map) : {};
-    final rawItems = payload['items'] is List ? payload['items'] as List : const [];
-    final pg = payload['pagination'];
-    final items = <VodItem>[];
-    for (final item in rawItems) {
-      if (item is Map) items.add(_toSiteItem(Map<String, dynamic>.from(item)));
-    }
-    return PagedVod(
-      list: items,
-      page: page,
-      pageCount: pg is Map ? _asInt(pg['pages'], page) : page,
-      total: pg is Map ? _asInt(pg['total'], items.length) : items.length,
+    return _siteThenWorker(
+      () async {
+        final site = await _siteGet('/api/search?q=$encoded&page=$page&size=20');
+        return _fromSiteList(site, page);
+      },
+      () async {
+        final data = await _workerGet('/api/search/$encoded?page=$page&size=20');
+        return _fromWorkerList(data, page);
+      },
     );
   }
 
   @override
   Future<VodDetail> detail(String id) async {
     Map<String, dynamic>? raw;
-    try {
-      final data = await _workerGet('/api/detail/${Uri.encodeComponent(id)}');
-      final list = data['list'];
-      if (list is List && list.isNotEmpty && list.first is Map) {
-        raw = Map<String, dynamic>.from(list.first as Map);
-      }
-    } catch (_) {}
+    if (!id.startsWith('archives_')) {
+      try {
+        final site = await _siteGet('/api/videos/${Uri.encodeComponent(id)}');
+        if (site['data'] is Map) {
+          raw = Map<String, dynamic>.from(site['data'] as Map);
+        }
+      } catch (_) {}
+    }
+    if (raw == null) {
+      try {
+        final data = await _workerGet('/api/detail/${Uri.encodeComponent(id)}');
+        final list = data['list'];
+        if (list is List && list.isNotEmpty && list.first is Map) {
+          raw = Map<String, dynamic>.from(list.first as Map);
+        }
+      } catch (_) {}
+    }
 
     if (raw == null && id.startsWith('archives_')) {
       final pid = id.replaceFirst('archives_', '');
@@ -368,7 +386,10 @@ class HuangguoApiClient implements VodClient {
     }
 
     if (episodes.isEmpty) {
-      final count = _asInt(raw['vod_episode_count'], 1);
+      final count = _asInt(
+        raw['vod_episode_count'],
+        _asInt(raw['episode_count'], _asInt(raw['total_episodes'], 1)),
+      );
       final total = count <= 0 ? 1 : count;
       episodes = [
         for (var i = 1; i <= total; i++) Episode(id: '$i', title: '第$i集'),
@@ -444,12 +465,29 @@ class HuangguoApiClient implements VodClient {
       }
     }
 
+    try {
+      final dx = await _dx.play(id, episode.id);
+      if (dx != null && dx.url.isNotEmpty) {
+        if (kDebugMode) {
+          debugPrint('huangguo play via dx150');
+        }
+        return Playable(
+          url: dx.url,
+          title: episode.title,
+          headers: _playHeaders(cdn: dx.cdn),
+        );
+      }
+    } catch (_) {}
+
     final data = await _workerGet(
       '/api/play?url=${Uri.encodeComponent(id)}&ep=${Uri.encodeComponent(episode.id)}',
     );
     final url = _asString(data['url']);
     if (url.isEmpty) {
       throw ApiException('没有拿到播放地址。');
+    }
+    if (kDebugMode) {
+      debugPrint('huangguo play via worker');
     }
     return Playable(url: url, title: episode.title, headers: _playHeaders());
   }

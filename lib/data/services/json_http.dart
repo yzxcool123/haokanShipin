@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 
 import 'api_exception.dart';
+import 'doh_resolver.dart';
 
 class JsonHttp {
   JsonHttp({Dio? client}) : _client = client ?? createDefaultClient();
@@ -15,9 +17,9 @@ class JsonHttp {
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
   static Dio createDefaultClient() {
-    return Dio(
+    final dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
+        connectTimeout: const Duration(seconds: 5),
         sendTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
         headers: {
@@ -29,6 +31,14 @@ class JsonHttp {
         validateStatus: (status) => status != null && status >= 200 && status < 300,
       ),
     );
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        client.connectionFactory = DohResolver.instance.startConnect;
+        return client;
+      },
+    );
+    return dio;
   }
 
   Future<Map<String, dynamic>> get(
@@ -67,31 +77,91 @@ class JsonHttp {
       ...?headers,
     };
 
+    DioException? lastDio;
     try {
-      final response = await _client.request<List<int>>(
-        uri.toString(),
-        data: method.toUpperCase() == 'POST'
-            ? (body is String ? body : jsonEncode(body ?? {}))
-            : null,
-        options: Options(
-          method: method,
-          headers: reqHeaders,
-          contentType: method.toUpperCase() == 'POST' ? Headers.jsonContentType : null,
-          sendTimeout: timeout,
-          receiveTimeout: timeout,
-          responseType: ResponseType.bytes,
-        ),
-      );
-      return _parseBody(response);
-    } on ApiException {
-      rethrow;
-    } on DioException catch (e) {
-      final error = _fromDio(e);
+      for (var attempt = 0; attempt < 8; attempt++) {
+        try {
+          final response = await _client.request<List<int>>(
+            uri.toString(),
+            data: method.toUpperCase() == 'POST'
+                ? (body is String ? body : jsonEncode(body ?? {}))
+                : null,
+            options: Options(
+              method: method,
+              headers: reqHeaders,
+              contentType: method.toUpperCase() == 'POST' ? Headers.jsonContentType : null,
+              sendTimeout: timeout,
+              receiveTimeout: timeout,
+              responseType: ResponseType.bytes,
+            ),
+          );
+          return _parseBody(response);
+        } on ApiException {
+          rethrow;
+        } on DioException catch (e) {
+          lastDio = e;
+          if (!_shouldRetry(e) || attempt == 7) {
+            final error = _fromDio(e);
+            if (kDebugMode) {
+              debugPrint('请求失败 ${uri.toString()} -> ${error.message}');
+            }
+            throw error;
+          }
+        }
+      }
+      final error = _fromDio(lastDio!);
       if (kDebugMode) {
         debugPrint('请求失败 ${uri.toString()} -> ${error.message}');
       }
       throw error;
     } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('网络请求失败：$e');
+    }
+  }
+
+
+  Future<Uint8List> getBytes(
+    Uri uri, {
+    Map<String, String>? headers,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final reqHeaders = <String, dynamic>{
+      'User-Agent': defaultUa,
+      'Accept': '*/*',
+      ...?headers,
+    };
+    DioException? lastDio;
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final response = await _client.request<List<int>>(
+            uri.toString(),
+            options: Options(
+              method: 'GET',
+              headers: reqHeaders,
+              sendTimeout: timeout,
+              receiveTimeout: timeout,
+              responseType: ResponseType.bytes,
+            ),
+          );
+          final status = response.statusCode ?? 0;
+          if (status < 200 || status >= 300) {
+            throw ApiException('接口返回 $status');
+          }
+          return Uint8List.fromList(_maybeGunzip(response.data ?? const <int>[]));
+        } on ApiException {
+          rethrow;
+        } on DioException catch (e) {
+          lastDio = e;
+          if (!_shouldRetry(e) || attempt == 2) {
+            throw _fromDio(e);
+          }
+        }
+      }
+      throw _fromDio(lastDio!);
+    } catch (e) {
+      if (e is ApiException) rethrow;
       throw ApiException('网络请求失败：$e');
     }
   }
@@ -127,6 +197,18 @@ class JsonHttp {
       return gzip.decode(bytes);
     }
     return bytes;
+  }
+
+  bool _shouldRetry(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.connectionError:
+      case DioExceptionType.unknown:
+        return true;
+      default:
+        return false;
+    }
   }
 
   ApiException _fromDio(DioException e) {
