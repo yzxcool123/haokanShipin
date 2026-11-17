@@ -202,7 +202,9 @@ class _PlayerViewState extends State<PlayerView> {
   }
 
   void _onPointerDown(PointerDownEvent event, BoxConstraints constraints) {
+    final topReserve = MediaQuery.paddingOf(context).top + 56;
     const controlReserve = 96.0;
+    if (event.localPosition.dy < topReserve) return;
     if (event.localPosition.dy > constraints.maxHeight - controlReserve) {
       return;
     }
@@ -238,6 +240,15 @@ class _PlayerViewState extends State<PlayerView> {
     });
   }
 
+  void _onBack() {
+    final chewie = _chewieController;
+    if (chewie != null && chewie.isFullScreen) {
+      chewie.exitFullScreen();
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
   @override
   void dispose() {
     _seekHintTimer?.cancel();
@@ -250,56 +261,73 @@ class _PlayerViewState extends State<PlayerView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          SafeArea(
-            bottom: false,
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                children: [
-                  const BackButton(color: Colors.white),
-                  Expanded(
-                    child: Text(
-                      widget.playable.title.isEmpty
-                          ? '播放'
-                          : widget.playable.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed:
-                        _chewieController == null ? null : _showSpeedPicker,
-                    child: Text(
-                      _speed == 1.0 ? '倍速' : _speedLabel(_speed),
-                      style: TextStyle(
-                        color: _speed == 1.0 ? Colors.white : _accent,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: _looping ? '关闭循环播放' : '开启循环播放',
-                    onPressed: _chewieController == null ? null : _toggleLoop,
-                    icon: Icon(
-                      Icons.loop,
-                      color: _looping ? _accent : Colors.white,
-                    ),
-                  ),
-                ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildBody(),
+            _buildOverlayBar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverlayBar() {
+    final ready = _chewieController != null && _error == null;
+    final title = widget.playable.title.isEmpty ? '播放' : widget.playable.title;
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: _onBack,
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
               ),
-            ),
+              if (ready) ...[
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _showSpeedPicker,
+                  child: Text(
+                    _speed == 1.0 ? '倍速' : _speedLabel(_speed),
+                    style: TextStyle(
+                      color: _speed == 1.0 ? Colors.white : _accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: _looping ? '关闭循环播放' : '开启循环播放',
+                  onPressed: _toggleLoop,
+                  icon: Icon(
+                    Icons.loop,
+                    color: _looping ? _accent : Colors.white,
+                  ),
+                ),
+              ] else
+                const Spacer(),
+            ],
           ),
-          Expanded(child: _buildBody()),
-        ],
+        ),
       ),
     );
   }
