@@ -9,7 +9,7 @@ python3 - <<'PY'
 from pathlib import Path
 import re
 
-display = "好看视频"
+display = "蓝果短剧"
 
 manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():

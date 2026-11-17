@@ -131,7 +131,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: '好看视频',
+      title: '蓝果短剧',
       theme: AppTheme.dark(),
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
