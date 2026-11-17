@@ -33,6 +33,7 @@ class DetailViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       detail = await _catalogRepository.detail(vodId, sourceKey: sourceKey);
+      lineIndex = _preferredLineIndex(detail?.lines ?? const []);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -53,5 +54,19 @@ class DetailViewModel extends ChangeNotifier {
       lineName: currentLine?.name,
       sourceKey: sourceKey,
     );
+  }
+
+  int _preferredLineIndex(List<PlayLine> lines) {
+    if (lines.isEmpty) return 0;
+    final index = lines.indexWhere(_looksLikeM3u8);
+    return index >= 0 ? index : 0;
+  }
+
+  bool _looksLikeM3u8(PlayLine line) {
+    if (line.name.toLowerCase().contains('m3u8')) return true;
+    return line.episodes.any((episode) {
+      final url = episode.url?.toLowerCase() ?? '';
+      return url.contains('.m3u8');
+    });
   }
 }
