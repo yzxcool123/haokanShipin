@@ -17,21 +17,29 @@ class ProfileViewModel extends ChangeNotifier {
   final HistoryRepository _historyRepository;
   final SourceRepository _sourceRepository;
 
-  static const previewCount = 8;
+  static const previewCount = 6;
 
   HistoryRepository get history => _historyRepository;
 
   List<WatchRecord> get continueWatching =>
       _historyRepository.continueWatching;
 
+  List<WatchRecord> get allRecords => _historyRepository.records;
+
   List<WatchRecord> get recentPreview {
-    final all = _historyRepository.records;
+    final all = allRecords;
     if (all.length <= previewCount) return all;
     return all.sublist(0, previewCount);
   }
 
-  bool get hasMoreHistory =>
-      _historyRepository.records.length > previewCount;
+  bool get hasMoreHistory => allRecords.length > previewCount;
+
+  int get historyCount => allRecords.length;
+
+  int get continueCount => continueWatching.length;
+
+  int get finishedCount =>
+      allRecords.where((record) => record.isFinished).length;
 
   String get currentSourceName {
     final current = _sourceRepository.current;

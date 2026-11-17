@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/history_repository.dart';
-import 'watch_cover.dart';
-import 'watch_time.dart';
+import 'watch_record_tile.dart';
 
 class HistoryView extends StatelessWidget {
   const HistoryView({super.key, required this.historyRepository});
@@ -53,7 +52,17 @@ class HistoryView extends StatelessWidget {
             ],
           ),
           body: records.isEmpty
-              ? const Center(child: Text('还没有播放记录'))
+              ? Center(
+                  child: Text(
+                    '还没有播放记录',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.55),
+                        ),
+                  ),
+                )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: records.length,
@@ -65,29 +74,30 @@ class HistoryView extends StatelessWidget {
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
-                        color: Theme.of(context).colorScheme.error,
-                        child: const Icon(Icons.delete_outline, color: Colors.white),
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.error,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.white,
+                        ),
                       ),
                       onDismissed: (_) => historyRepository.remove(record),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                        leading: WatchCover(
-                          record: record,
-                          width: 52,
-                          height: 70,
-                        ),
-                        title: Text(
-                          record.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          formatWatchSubtitle(record),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () => context.push(
-                          '/detail/${Uri.encodeComponent(record.sourceKey)}/${Uri.encodeComponent(record.vodId)}',
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF181A20),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: WatchRecordTile(
+                            record: record,
+                            onTap: () => context.push(
+                              '/detail/${Uri.encodeComponent(record.sourceKey)}/${Uri.encodeComponent(record.vodId)}',
+                            ),
+                          ),
                         ),
                       ),
                     );
