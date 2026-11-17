@@ -32,7 +32,7 @@ class ProfileView extends StatelessWidget {
                 Text(
                   '我的',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w400,
                       ),
                 ),
                 const SizedBox(height: 16),
@@ -47,7 +47,7 @@ class ProfileView extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 if (continuing.isEmpty)
-                  const _EmptyCard(text: '看过的片子会出现在这里，方便接着看')
+                  const _EmptyCard(text: '看过的影片会出现在这里，方便接着看')
                 else
                   SizedBox(
                     height: 210,
@@ -374,7 +374,7 @@ class _MenuTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+        padding: const EdgeInsets.fromLTRB(10, 14, 12, 10),
         child: Row(
           children: [
             Container(
@@ -387,30 +387,28 @@ class _MenuTile extends StatelessWidget {
               child: Icon(icon, size: 18, color: const Color(0xFF7C9CFF)),
             ),
             const SizedBox(width: 12),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withValues(alpha: 0.55),
                     ),
               ),
             ),
-            if (subtitle.isNotEmpty) ...[
-              Flexible(
-                child: Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withValues(alpha: 0.55),
-                      ),
-                ),
-              ),
-              const SizedBox(width: 4),
-            ],
+            const SizedBox(width: 2),
             Icon(
               Icons.chevron_right,
+              size: 18,
               color: scheme.onSurface.withValues(alpha: 0.28),
             ),
           ],

@@ -59,7 +59,7 @@ class _CatalogViewState extends State<CatalogView> {
             : null;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('蓝果短剧'),
+            title: const Text('影视'),
             actions: [
               TextButton(
                 onPressed: () => context.push('/sources'),

@@ -34,7 +34,7 @@ class SettingsView extends StatelessWidget {
                   children: [
                     _ModeTile(
                       title: '健康模式',
-                      subtitle: '隐藏带 🔞 标识的源和黄果短剧，并默认使用第一个可用的 🔵⭐ 源',
+                      subtitle: '身体要紧呀~',
                       selected: mode == ContentMode.healthy,
                       onTap: () =>
                           sourceRepository.setContentMode(ContentMode.healthy),
@@ -50,7 +50,7 @@ class SettingsView extends StatelessWidget {
                     ),
                     _ModeTile(
                       title: '成人模式',
-                      subtitle: '显示全部数据源，并默认选中黄果短剧',
+                      subtitle: '😏',
                       selected: mode == ContentMode.adult,
                       onTap: () =>
                           sourceRepository.setContentMode(ContentMode.adult),
@@ -59,15 +59,6 @@ class SettingsView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Text(
-                '如果你手动选了其他源，下次打开应用时会继续使用上次选中的源。',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.55),
-                    ),
-              ),
             ],
           ),
         );
