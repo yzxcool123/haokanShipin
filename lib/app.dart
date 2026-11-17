@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'data/repositories/catalog_repository.dart';
+import 'data/repositories/favorite_repository.dart';
 import 'data/repositories/history_repository.dart';
 import 'data/repositories/source_repository.dart';
 import 'domain/models/playable.dart';
@@ -11,6 +12,9 @@ import 'ui/features/catalog/catalog_view.dart';
 import 'ui/features/catalog/catalog_view_model.dart';
 import 'ui/features/detail/detail_view.dart';
 import 'ui/features/player/player_view.dart';
+import 'ui/features/profile/about_view.dart';
+import 'ui/features/profile/downloads_view.dart';
+import 'ui/features/profile/favorites_view.dart';
 import 'ui/features/profile/history_view.dart';
 import 'ui/features/profile/profile_view.dart';
 import 'ui/features/profile/profile_view_model.dart';
@@ -36,6 +40,7 @@ class HaoKanShiPinApp extends StatefulWidget {
 class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
   late final CatalogRepository _catalogRepository;
   late final HistoryRepository _historyRepository;
+  late final FavoriteRepository _favoriteRepository;
   late final CatalogViewModel _catalogViewModel;
   late final SearchViewModel _searchViewModel;
   late final SourcesViewModel _sourcesViewModel;
@@ -53,6 +58,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
       prefs: widget.prefs,
       sourceRepository: widget.sourceRepository,
     );
+    _favoriteRepository = FavoriteRepository(
+      prefs: widget.prefs,
+      sourceRepository: widget.sourceRepository,
+    );
     _catalogViewModel = CatalogViewModel(
       catalogRepository: _catalogRepository,
       sourceRepository: widget.sourceRepository,
@@ -65,6 +74,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
         SourcesViewModel(sourceRepository: widget.sourceRepository);
     _profileViewModel = ProfileViewModel(
       historyRepository: _historyRepository,
+      favoriteRepository: _favoriteRepository,
       sourceRepository: widget.sourceRepository,
     );
     _router = _createRouter();
@@ -119,6 +129,19 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               HistoryView(historyRepository: _historyRepository),
         ),
         GoRoute(
+          path: '/favorites',
+          builder: (context, state) =>
+              FavoritesView(favoriteRepository: _favoriteRepository),
+        ),
+        GoRoute(
+          path: '/downloads',
+          builder: (context, state) => const DownloadsView(),
+        ),
+        GoRoute(
+          path: '/about',
+          builder: (context, state) => const AboutView(),
+        ),
+        GoRoute(
           path: '/detail/:sourceKey/:id',
           builder: (context, state) {
             final sourceKey =
@@ -128,6 +151,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               key: ValueKey('detail_${sourceKey}_$id'),
               catalogRepository: _catalogRepository,
               historyRepository: _historyRepository,
+              favoriteRepository: _favoriteRepository,
               sourceKey: sourceKey,
               vodId: id,
             );
@@ -157,6 +181,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
     _sourcesViewModel.dispose();
     _profileViewModel.dispose();
     _historyRepository.dispose();
+    _favoriteRepository.dispose();
     _router.dispose();
     super.dispose();
   }

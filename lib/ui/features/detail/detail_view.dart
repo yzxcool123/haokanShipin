@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../data/repositories/catalog_repository.dart';
+import '../../../data/repositories/favorite_repository.dart';
 import '../../../data/repositories/history_repository.dart';
 import '../../../domain/models/playable.dart';
 import '../../core/widgets/cover_image.dart';
@@ -13,12 +14,14 @@ class DetailView extends StatefulWidget {
     super.key,
     required this.catalogRepository,
     required this.historyRepository,
+    required this.favoriteRepository,
     required this.sourceKey,
     required this.vodId,
   });
 
   final CatalogRepository catalogRepository;
   final HistoryRepository historyRepository;
+  final FavoriteRepository favoriteRepository;
   final String sourceKey;
   final String vodId;
 
@@ -52,6 +55,7 @@ class _DetailViewState extends State<DetailView> {
     return DetailViewModel(
       catalogRepository: widget.catalogRepository,
       historyRepository: widget.historyRepository,
+      favoriteRepository: widget.favoriteRepository,
       sourceKey: widget.sourceKey,
       vodId: widget.vodId,
     );
@@ -72,6 +76,31 @@ class _DetailViewState extends State<DetailView> {
     }
   }
 
+  PreferredSizeWidget _appBar(DetailViewModel vm, {required bool showFavorite}) {
+    return AppBar(
+      title: const Text('详情'),
+      actions: [
+        if (showFavorite)
+          IconButton(
+            tooltip: vm.isFavorite ? '取消收藏' : '收藏',
+            onPressed: () => _toggleFavorite(vm),
+            icon: Icon(
+              vm.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: vm.isFavorite ? const Color(0xFFFF7A9C) : null,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _toggleFavorite(DetailViewModel vm) async {
+    final added = await vm.toggleFavorite();
+    if (!mounted || added == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(added ? '已收藏' : '已取消收藏')),
+    );
+  }
+
   @override
   void dispose() {
     _viewModel.dispose();
@@ -86,26 +115,26 @@ class _DetailViewState extends State<DetailView> {
         final vm = _viewModel;
         if (vm.loading && vm.detail == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('详情')),
+            appBar: _appBar(vm, showFavorite: false),
             body: const LoadingView(),
           );
         }
         if (vm.error != null && vm.detail == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('详情')),
+            appBar: _appBar(vm, showFavorite: false),
             body: ErrorView(message: vm.error!, onRetry: vm.load),
           );
         }
         final detail = vm.detail;
         if (detail == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('详情')),
+            appBar: _appBar(vm, showFavorite: false),
             body: const EmptyView(),
           );
         }
         final item = detail.item;
         return Scaffold(
-          appBar: AppBar(title: const Text('详情')),
+          appBar: _appBar(vm, showFavorite: true),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [

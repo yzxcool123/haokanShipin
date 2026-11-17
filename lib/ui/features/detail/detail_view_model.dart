@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/repositories/catalog_repository.dart';
+import '../../../data/repositories/favorite_repository.dart';
 import '../../../data/repositories/history_repository.dart';
 import '../../../domain/models/playable.dart';
 import '../../../domain/models/vod_detail.dart';
@@ -9,13 +10,18 @@ class DetailViewModel extends ChangeNotifier {
   DetailViewModel({
     required CatalogRepository catalogRepository,
     required HistoryRepository historyRepository,
+    required FavoriteRepository favoriteRepository,
     required this.sourceKey,
     required this.vodId,
   })  : _catalogRepository = catalogRepository,
-        _historyRepository = historyRepository;
+        _historyRepository = historyRepository,
+        _favoriteRepository = favoriteRepository {
+    _favoriteRepository.addListener(notifyListeners);
+  }
 
   final CatalogRepository _catalogRepository;
   final HistoryRepository _historyRepository;
+  final FavoriteRepository _favoriteRepository;
   final String sourceKey;
   final String vodId;
 
@@ -89,6 +95,24 @@ class DetailViewModel extends ChangeNotifier {
     if (lines.isEmpty) return 0;
     final index = lines.indexWhere(_looksLikeM3u8);
     return index >= 0 ? index : 0;
+  }
+
+  bool get isFavorite => _favoriteRepository.isFavorite(sourceKey, vodId);
+
+  Future<bool?> toggleFavorite() async {
+    final item = detail?.item;
+    if (item == null) return null;
+    return _favoriteRepository.toggleFromVod(
+      item: item,
+      sourceKey: sourceKey,
+      vodId: vodId,
+    );
+  }
+
+  @override
+  void dispose() {
+    _favoriteRepository.removeListener(notifyListeners);
+    super.dispose();
   }
 
   bool _looksLikeM3u8(PlayLine line) {

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../domain/models/watch_record.dart';
 import 'profile_view_model.dart';
 import 'watch_cover.dart';
-import 'watch_record_tile.dart';
 
 class ProfileView extends StatelessWidget {
   const ProfileView({super.key, required this.viewModel});
@@ -23,7 +22,8 @@ class ProfileView extends StatelessWidget {
       listenable: viewModel,
       builder: (context, _) {
         final continuing = viewModel.continueWatching;
-        final recent = viewModel.recentPreview;
+        final dividerColor =
+            Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
         return Scaffold(
           body: SafeArea(
             child: ListView(
@@ -37,13 +37,6 @@ class ProfileView extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 _ProfileHeader(sourceName: viewModel.currentSourceName),
-                const SizedBox(height: 12),
-                _StatsCard(
-                  continueCount: viewModel.continueCount,
-                  historyCount: viewModel.historyCount,
-                  finishedCount: viewModel.finishedCount,
-                  onHistoryTap: () => context.push('/history'),
-                ),
                 const SizedBox(height: 24),
                 _SectionHeader(
                   title: '继续观看',
@@ -73,47 +66,10 @@ class ProfileView extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 24),
-                _SectionHeader(
-                  title: '最近播放',
-                  actionLabel: viewModel.historyCount == 0 ? null : '全部',
-                  onAction: viewModel.historyCount == 0
-                      ? null
-                      : () => context.push('/history'),
-                ),
-                const SizedBox(height: 10),
-                if (recent.isEmpty)
-                  const _EmptyCard(text: '还没有播放记录')
-                else
-                  _GroupCard(
-                    children: [
-                      for (var i = 0; i < recent.length; i++)
-                        WatchRecordTile(
-                          record: recent[i],
-                          showDivider: i != recent.length - 1,
-                          onTap: () => _openDetail(context, recent[i]),
-                        ),
-                    ],
-                  ),
-                const SizedBox(height: 24),
                 const _SectionHeader(title: '常用功能'),
                 const SizedBox(height: 10),
                 _GroupCard(
                   children: [
-                    _MenuTile(
-                      icon: Icons.swap_horiz_rounded,
-                      title: '数据源',
-                      subtitle: viewModel.currentSourceName,
-                      onTap: () => context.push('/sources'),
-                    ),
-                    Divider(
-                      height: 1,
-                      indent: 52,
-                      endIndent: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.08),
-                    ),
                     _MenuTile(
                       icon: Icons.history_rounded,
                       title: '播放记录',
@@ -121,6 +77,36 @@ class ProfileView extends StatelessWidget {
                           ? '暂无记录'
                           : '${viewModel.historyCount} 条',
                       onTap: () => context.push('/history'),
+                    ),
+                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    _MenuTile(
+                      icon: Icons.favorite_rounded,
+                      title: '收藏',
+                      subtitle: viewModel.favoriteCount == 0
+                          ? '暂无收藏'
+                          : '${viewModel.favoriteCount} 部',
+                      onTap: () => context.push('/favorites'),
+                    ),
+                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    _MenuTile(
+                      icon: Icons.download_rounded,
+                      title: '已下载',
+                      subtitle: '稍后推出',
+                      onTap: () => context.push('/downloads'),
+                    ),
+                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    _MenuTile(
+                      icon: Icons.swap_horiz_rounded,
+                      title: '数据源',
+                      subtitle: viewModel.currentSourceName,
+                      onTap: () => context.push('/sources'),
+                    ),
+                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    _MenuTile(
+                      icon: Icons.info_outline_rounded,
+                      title: '关于',
+                      subtitle: viewModel.versionLabel,
+                      onTap: () => context.push('/about'),
                     ),
                   ],
                 ),
@@ -195,95 +181,6 @@ class _ProfileHeader extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _StatsCard extends StatelessWidget {
-  const _StatsCard({
-    required this.continueCount,
-    required this.historyCount,
-    required this.finishedCount,
-    required this.onHistoryTap,
-  });
-
-  final int continueCount;
-  final int historyCount;
-  final int finishedCount;
-  final VoidCallback onHistoryTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return _GroupCard(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        Row(
-          children: [
-            _StatItem(value: '$continueCount', label: '继续观看', onTap: onHistoryTap),
-            _StatDivider(),
-            _StatItem(value: '$historyCount', label: '播放记录', onTap: onHistoryTap),
-            _StatDivider(),
-            _StatItem(value: '$finishedCount', label: '已看完', onTap: onHistoryTap),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  const _StatItem({
-    required this.value,
-    required this.label,
-    required this.onTap,
-  });
-
-  final String value;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Column(
-            children: [
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF7C9CFF),
-                      height: 1.1,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.62),
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatDivider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 28,
-      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
     );
   }
 }
@@ -491,18 +388,20 @@ class _MenuTile extends StatelessWidget {
                     ),
               ),
             ),
-            Flexible(
-              child: Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurface.withValues(alpha: 0.55),
-                    ),
+            if (subtitle.isNotEmpty) ...[
+              Flexible(
+                child: Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
+              const SizedBox(width: 4),
+            ],
             Icon(
               Icons.chevron_right,
               color: scheme.onSurface.withValues(alpha: 0.28),
