@@ -16,6 +16,7 @@ class SearchView extends StatefulWidget {
 
 class _SearchViewState extends State<SearchView> {
   final _controller = ScrollController();
+  final _queryController = TextEditingController();
 
   @override
   void initState() {
@@ -30,7 +31,16 @@ class _SearchViewState extends State<SearchView> {
   @override
   void dispose() {
     _controller.dispose();
+    _queryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchFromHistory(String keyword) async {
+    _queryController.value = TextEditingValue(
+      text: keyword,
+      selection: TextSelection.collapsed(offset: keyword.length),
+    );
+    await widget.viewModel.submit(keyword);
   }
 
   @override
@@ -46,14 +56,27 @@ class _SearchViewState extends State<SearchView> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: TextField(
-                  decoration: const InputDecoration(
+                  controller: _queryController,
+                  decoration: InputDecoration(
                     hintText: '输入片名或关键词',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                   textInputAction: TextInputAction.search,
                   onChanged: vm.onQueryChanged,
-                  onSubmitted: (_) => vm.search(),
+                  onSubmitted: vm.submit,
                 ),
               ),
               Expanded(child: _body(vm)),
@@ -66,7 +89,14 @@ class _SearchViewState extends State<SearchView> {
 
   Widget _body(SearchViewModel vm) {
     if (vm.keyword.isEmpty) {
-      return const EmptyView(message: '输入关键词后搜索当前源');
+      if (vm.history.isEmpty) {
+        return const EmptyView(message: '输入关键词后搜索当前源');
+      }
+      return _HistoryList(
+        history: vm.history,
+        onSelect: _searchFromHistory,
+        onClear: vm.clearHistory,
+      );
     }
     if (vm.loading) return const LoadingView();
     if (vm.error != null) {
@@ -94,6 +124,58 @@ class _SearchViewState extends State<SearchView> {
           ),
         );
       },
+    );
+  }
+}
+
+class _HistoryList extends StatelessWidget {
+  const _HistoryList({
+    required this.history,
+    required this.onSelect,
+    required this.onClear,
+  });
+
+  final List<String> history;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 0, 4),
+          child: Row(
+            children: [
+              Text(
+                '搜索历史',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: '清空搜索历史',
+                onPressed: onClear,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final keyword in history)
+              ActionChip(
+                label: Text(keyword),
+                onPressed: () => onSelect(keyword),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

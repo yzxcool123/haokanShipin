@@ -57,7 +57,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
       catalogRepository: _catalogRepository,
       sourceRepository: widget.sourceRepository,
     );
-    _searchViewModel = SearchViewModel(catalogRepository: _catalogRepository);
+    _searchViewModel = SearchViewModel(
+      catalogRepository: _catalogRepository,
+      prefs: widget.prefs,
+    );
     _sourcesViewModel =
         SourcesViewModel(sourceRepository: widget.sourceRepository);
     _profileViewModel = ProfileViewModel(
