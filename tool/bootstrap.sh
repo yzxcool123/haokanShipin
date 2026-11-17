@@ -3,13 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-flutter create . --project-name aikan_yingshi --org com.aikan --platforms=android,ios
+flutter create . --project-name haokan_shipin --org com.haokan --platforms=android,ios
 
 python3 - <<'PY'
 from pathlib import Path
 import re
 
-display = "爱看影视"
+display = "好看视频"
 
 manifest = Path("android/app/src/main/AndroidManifest.xml")
 if manifest.exists():

@@ -1,4 +1,4 @@
-package com.aikan.aikan_yingshi
+package com.haokan.haokan_shipin
 
 import io.flutter.embedding.android.FlutterActivity
 
