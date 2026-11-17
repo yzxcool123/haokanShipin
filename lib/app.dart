@@ -8,7 +8,6 @@ import 'ui/core/app_theme.dart';
 import 'ui/features/catalog/catalog_view.dart';
 import 'ui/features/catalog/catalog_view_model.dart';
 import 'ui/features/detail/detail_view.dart';
-import 'ui/features/detail/detail_view_model.dart';
 import 'ui/features/player/player_view.dart';
 import 'ui/features/search/search_view.dart';
 import 'ui/features/search/search_view_model.dart';
@@ -85,11 +84,10 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
             final sourceKey = Uri.decodeComponent(state.pathParameters['sourceKey'] ?? '');
             final id = Uri.decodeComponent(state.pathParameters['id'] ?? '');
             return DetailView(
-              viewModel: DetailViewModel(
-                catalogRepository: _catalogRepository,
-                sourceKey: sourceKey,
-                vodId: id,
-              ),
+              key: ValueKey('detail_${sourceKey}_$id'),
+              catalogRepository: _catalogRepository,
+              sourceKey: sourceKey,
+              vodId: id,
             );
           },
         ),

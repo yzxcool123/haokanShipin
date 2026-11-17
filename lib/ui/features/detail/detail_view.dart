@@ -1,34 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../data/repositories/catalog_repository.dart';
 import '../../../domain/models/playable.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import 'detail_view_model.dart';
 
 class DetailView extends StatefulWidget {
-  const DetailView({super.key, required this.viewModel});
+  const DetailView({
+    super.key,
+    required this.catalogRepository,
+    required this.sourceKey,
+    required this.vodId,
+  });
 
-  final DetailViewModel viewModel;
+  final CatalogRepository catalogRepository;
+  final String sourceKey;
+  final String vodId;
 
   @override
   State<DetailView> createState() => _DetailViewState();
 }
 
 class _DetailViewState extends State<DetailView> {
+  late DetailViewModel _viewModel;
   bool _opening = false;
 
   @override
   void initState() {
     super.initState();
-    widget.viewModel.load();
+    _viewModel = _createViewModel();
+    _viewModel.load();
+  }
+
+  @override
+  void didUpdateWidget(covariant DetailView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sourceKey != widget.sourceKey || oldWidget.vodId != widget.vodId) {
+      _viewModel.dispose();
+      _viewModel = _createViewModel();
+      _viewModel.load();
+    }
+  }
+
+  DetailViewModel _createViewModel() {
+    return DetailViewModel(
+      catalogRepository: widget.catalogRepository,
+      sourceKey: widget.sourceKey,
+      vodId: widget.vodId,
+    );
   }
 
   Future<void> _play(Episode episode) async {
     if (_opening) return;
     setState(() => _opening = true);
     try {
-      final playable = await widget.viewModel.play(episode);
+      final playable = await _viewModel.play(episode);
       if (!mounted) return;
       await context.push('/player', extra: playable);
     } catch (e) {
@@ -41,16 +69,16 @@ class _DetailViewState extends State<DetailView> {
 
   @override
   void dispose() {
-    widget.viewModel.dispose();
+    _viewModel.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.viewModel,
+      listenable: _viewModel,
       builder: (context, _) {
-        final vm = widget.viewModel;
+        final vm = _viewModel;
         if (vm.loading && vm.detail == null) {
           return const Scaffold(body: LoadingView());
         }

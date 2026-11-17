@@ -16,7 +16,7 @@ class DetailViewModel extends ChangeNotifier {
   final String vodId;
 
   VodDetail? detail;
-  bool loading = false;
+  bool loading = true;
   String? error;
   int lineIndex = 0;
 
