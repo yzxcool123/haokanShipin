@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../domain/models/category.dart';
 import '../../domain/models/media_source.dart';
 import '../../domain/models/paged.dart';
@@ -5,13 +7,18 @@ import '../../domain/models/playable.dart';
 import '../../domain/models/vod_detail.dart';
 import '../services/client_factory.dart';
 import '../services/vod_client.dart';
+import 'catalog_cache.dart';
 import 'source_repository.dart';
 
 class CatalogRepository {
-  CatalogRepository({required SourceRepository sourceRepository})
-      : _sourceRepository = sourceRepository;
+  CatalogRepository({
+    required SourceRepository sourceRepository,
+    required SharedPreferences prefs,
+  })  : _sourceRepository = sourceRepository,
+        _cache = CatalogCache(prefs);
 
   final SourceRepository _sourceRepository;
+  final CatalogCache _cache;
   VodClient? _client;
   String? _clientKey;
 
@@ -61,6 +68,30 @@ class CatalogRepository {
   }) {
     final source = _sourceByKey(sourceKey);
     return _clientOf(source).play(id: id, episode: episode, lineName: lineName);
+  }
+
+  List<VodCategory>? cachedCategories(String sourceKey) {
+    return _cache.categories(sourceKey);
+  }
+
+  PagedVod? cachedFirstPage({required String sourceKey, String? categoryId}) {
+    return _cache.firstPage(sourceKey, categoryId);
+  }
+
+  Future<void> saveCategories(String sourceKey, List<VodCategory> categories) {
+    return _cache.saveCategories(sourceKey, categories);
+  }
+
+  Future<void> saveFirstPage({
+    required String sourceKey,
+    String? categoryId,
+    required PagedVod page,
+  }) {
+    return _cache.saveFirstPage(
+      sourceKey: sourceKey,
+      categoryId: categoryId,
+      page: page,
+    );
   }
 
   MediaSource _sourceByKey(String? sourceKey) {

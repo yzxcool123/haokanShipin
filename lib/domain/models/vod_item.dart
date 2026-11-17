@@ -18,4 +18,28 @@ class VodItem {
   final String score;
   final String typeName;
   final String description;
+
+  factory VodItem.fromJson(Map<String, dynamic> json) {
+    return VodItem(
+      sourceKey: '${json['sourceKey'] ?? ''}',
+      id: '${json['id'] ?? ''}',
+      name: '${json['name'] ?? ''}',
+      pic: '${json['pic'] ?? ''}',
+      remarks: '${json['remarks'] ?? ''}',
+      score: '${json['score'] ?? ''}',
+      typeName: '${json['typeName'] ?? ''}',
+      description: '${json['description'] ?? ''}',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'sourceKey': sourceKey,
+        'id': id,
+        'name': name,
+        'pic': pic,
+        'remarks': remarks,
+        'score': score,
+        'typeName': typeName,
+        'description': description,
+      };
 }

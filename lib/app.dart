@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'data/repositories/catalog_repository.dart';
 import 'data/repositories/source_repository.dart';
@@ -15,9 +16,14 @@ import 'ui/features/sources/sources_view.dart';
 import 'ui/features/sources/sources_view_model.dart';
 
 class HaoKanShiPinApp extends StatefulWidget {
-  const HaoKanShiPinApp({super.key, required this.sourceRepository});
+  const HaoKanShiPinApp({
+    super.key,
+    required this.sourceRepository,
+    required this.prefs,
+  });
 
   final SourceRepository sourceRepository;
+  final SharedPreferences prefs;
 
   @override
   State<HaoKanShiPinApp> createState() => _HaoKanShiPinAppState();
@@ -33,13 +39,17 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
   @override
   void initState() {
     super.initState();
-    _catalogRepository = CatalogRepository(sourceRepository: widget.sourceRepository);
+    _catalogRepository = CatalogRepository(
+      sourceRepository: widget.sourceRepository,
+      prefs: widget.prefs,
+    );
     _catalogViewModel = CatalogViewModel(
       catalogRepository: _catalogRepository,
       sourceRepository: widget.sourceRepository,
     );
     _searchViewModel = SearchViewModel(catalogRepository: _catalogRepository);
-    _sourcesViewModel = SourcesViewModel(sourceRepository: widget.sourceRepository);
+    _sourcesViewModel =
+        SourcesViewModel(sourceRepository: widget.sourceRepository);
     _router = _createRouter();
   }
 
@@ -56,7 +66,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               routes: [
                 GoRoute(
                   path: '/home',
-                  builder: (context, state) => CatalogView(viewModel: _catalogViewModel),
+                  builder: (context, state) =>
+                      CatalogView(viewModel: _catalogViewModel),
                 ),
               ],
             ),
@@ -64,7 +75,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               routes: [
                 GoRoute(
                   path: '/search',
-                  builder: (context, state) => SearchView(viewModel: _searchViewModel),
+                  builder: (context, state) =>
+                      SearchView(viewModel: _searchViewModel),
                 ),
               ],
             ),
@@ -72,7 +84,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               routes: [
                 GoRoute(
                   path: '/sources',
-                  builder: (context, state) => SourcesView(viewModel: _sourcesViewModel),
+                  builder: (context, state) =>
+                      SourcesView(viewModel: _sourcesViewModel),
                 ),
               ],
             ),
@@ -81,7 +94,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
         GoRoute(
           path: '/detail/:sourceKey/:id',
           builder: (context, state) {
-            final sourceKey = Uri.decodeComponent(state.pathParameters['sourceKey'] ?? '');
+            final sourceKey =
+                Uri.decodeComponent(state.pathParameters['sourceKey'] ?? '');
             final id = Uri.decodeComponent(state.pathParameters['id'] ?? '');
             return DetailView(
               key: ValueKey('detail_${sourceKey}_$id'),

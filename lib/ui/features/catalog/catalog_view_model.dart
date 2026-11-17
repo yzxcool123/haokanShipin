@@ -19,11 +19,13 @@ class CatalogViewModel extends ChangeNotifier {
   final CatalogRepository _catalogRepository;
   final SourceRepository _sourceRepository;
   String? _sourceFingerprint;
+  int _loadGeneration = 0;
 
   List<VodCategory> categories = const [];
   List<VodItem> items = const [];
   String? selectedCategoryId;
   bool loading = false;
+  bool refreshing = false;
   bool loadingMore = false;
   String? error;
   int page = 1;
@@ -45,34 +47,80 @@ class CatalogViewModel extends ChangeNotifier {
   }
 
   Future<void> load({bool reset = true}) async {
+    final generation = ++_loadGeneration;
+    final sourceKey = source?.key;
+    final categoryId = selectedCategoryId;
+
     if (reset) {
-      loading = true;
       error = null;
-      items = const [];
       page = 1;
+      var shownCache = false;
+      if (sourceKey != null) {
+        final cachedCats = _catalogRepository.cachedCategories(sourceKey);
+        if (cachedCats != null && cachedCats.isNotEmpty) {
+          categories = cachedCats;
+        }
+        final cachedPage = _catalogRepository.cachedFirstPage(
+          sourceKey: sourceKey,
+          categoryId: categoryId,
+        );
+        if (cachedPage != null && cachedPage.list.isNotEmpty) {
+          items = cachedPage.list;
+          page = cachedPage.page;
+          pageCount = cachedPage.pageCount;
+          shownCache = true;
+        } else {
+          items = const [];
+        }
+      } else {
+        items = const [];
+      }
+      loading = !shownCache;
+      refreshing = true;
       notifyListeners();
     }
+
     try {
       if (reset) {
         try {
-          categories = await _catalogRepository.categories();
+          final cats = await _catalogRepository.categories();
+          if (generation != _loadGeneration) return;
+          categories = cats;
+          if (sourceKey != null && cats.isNotEmpty) {
+            await _catalogRepository.saveCategories(sourceKey, cats);
+          }
         } catch (_) {
-          categories = const [];
+          if (generation != _loadGeneration) return;
+          if (categories.isEmpty) categories = const [];
         }
       }
       final result = await _catalogRepository.list(
         page: 1,
-        categoryId: selectedCategoryId,
+        categoryId: categoryId,
       );
+      if (generation != _loadGeneration) return;
       items = result.list;
       page = result.page;
       pageCount = result.pageCount;
       error = null;
+      if (sourceKey != null) {
+        await _catalogRepository.saveFirstPage(
+          sourceKey: sourceKey,
+          categoryId: categoryId,
+          page: result,
+        );
+      }
     } catch (e) {
-      error = e.toString();
+      if (generation != _loadGeneration) return;
+      if (items.isEmpty) {
+        error = e.toString();
+      }
     } finally {
-      loading = false;
-      notifyListeners();
+      if (generation == _loadGeneration) {
+        loading = false;
+        refreshing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -82,23 +130,28 @@ class CatalogViewModel extends ChangeNotifier {
   }
 
   Future<void> loadMore() async {
-    if (loading || loadingMore || page >= pageCount) return;
+    if (loading || refreshing || loadingMore || page >= pageCount) return;
     loadingMore = true;
     notifyListeners();
+    final generation = _loadGeneration;
     try {
       final next = page + 1;
       final result = await _catalogRepository.list(
         page: next,
         categoryId: selectedCategoryId,
       );
+      if (generation != _loadGeneration) return;
       items = [...items, ...result.list];
       page = result.page;
       pageCount = result.pageCount;
     } catch (e) {
+      if (generation != _loadGeneration) return;
       error = e.toString();
     } finally {
-      loadingMore = false;
-      notifyListeners();
+      if (generation == _loadGeneration) {
+        loadingMore = false;
+        notifyListeners();
+      }
     }
   }
 

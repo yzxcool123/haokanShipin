@@ -19,6 +19,6 @@ Future<void> main() async {
     bundle: rootBundle,
   );
   await sourceRepository.load();
-  runApp(HaoKanShiPinApp(sourceRepository: sourceRepository));
+  runApp(HaoKanShiPinApp(sourceRepository: sourceRepository, prefs: prefs));
   unawaited(sourceRepository.refreshOnColdStart());
 }

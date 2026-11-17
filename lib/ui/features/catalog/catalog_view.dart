@@ -38,7 +38,8 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _openDetail(VodItem item) {
-    context.push('/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.id)}');
+    context.push(
+        '/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.id)}');
   }
 
   @override
@@ -50,7 +51,10 @@ class _CatalogViewState extends State<CatalogView> {
         final sourceName = vm.sourceDisplayName;
         final sourceStyle = vm.isCurrentUnavailable
             ? TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.55),
               )
             : null;
         return Scaffold(
@@ -69,6 +73,8 @@ class _CatalogViewState extends State<CatalogView> {
           ),
           body: Column(
             children: [
+              if (vm.refreshing && vm.items.isNotEmpty)
+                const LinearProgressIndicator(minHeight: 2),
               if (vm.categories.isNotEmpty)
                 SizedBox(
                   height: 48,
