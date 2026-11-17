@@ -89,6 +89,8 @@ class SourcesView extends StatelessWidget {
               final source = viewModel.sources[index];
               return _SourceTile(
                 source: source,
+                title: viewModel.displayNameOf(source),
+                unavailable: viewModel.isUnavailable(source),
                 selected: source.key == currentKey,
                 onTap: () => viewModel.select(source),
                 onDelete: source.custom ? () => viewModel.removeCustom(source) : null,
@@ -104,12 +106,16 @@ class SourcesView extends StatelessWidget {
 class _SourceTile extends StatelessWidget {
   const _SourceTile({
     required this.source,
+    required this.title,
+    required this.unavailable,
     required this.selected,
     required this.onTap,
     this.onDelete,
   });
 
   final MediaSource source;
+  final String title;
+  final bool unavailable;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
@@ -119,12 +125,15 @@ class _SourceTile extends StatelessWidget {
     final subtitle = source.isSupported
         ? (source.isHuangguo ? '黄果接口 · 需签名' : '采集站 JSON')
         : '当前版本暂不支持该爬虫源';
+    final titleColor = unavailable
+        ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55)
+        : null;
     return ListTile(
       leading: Icon(
         selected ? Icons.radio_button_checked : Icons.radio_button_off,
         color: selected ? Theme.of(context).colorScheme.primary : null,
       ),
-      title: Text(source.name),
+      title: Text(title, style: titleColor == null ? null : TextStyle(color: titleColor)),
       subtitle: Text('$subtitle\n${source.api}', maxLines: 2, overflow: TextOverflow.ellipsis),
       isThreeLine: true,
       enabled: source.isSupported,

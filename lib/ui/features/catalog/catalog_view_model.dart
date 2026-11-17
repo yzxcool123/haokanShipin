@@ -12,11 +12,13 @@ class CatalogViewModel extends ChangeNotifier {
     required SourceRepository sourceRepository,
   })  : _catalogRepository = catalogRepository,
         _sourceRepository = sourceRepository {
+    _sourceFingerprint = _fingerprint(_sourceRepository.current);
     _sourceRepository.addListener(_onSourceChanged);
   }
 
   final CatalogRepository _catalogRepository;
   final SourceRepository _sourceRepository;
+  String? _sourceFingerprint;
 
   List<VodCategory> categories = const [];
   List<VodItem> items = const [];
@@ -28,6 +30,19 @@ class CatalogViewModel extends ChangeNotifier {
   int pageCount = 1;
 
   MediaSource? get source => _sourceRepository.current;
+
+  String get sourceDisplayName {
+    final current = source;
+    if (current == null) return '未选择源';
+    return _sourceRepository.displayNameOf(current);
+  }
+
+  bool get isCurrentUnavailable {
+    final current = source;
+    if (current == null) return false;
+    return _sourceRepository.availabilityOf(current.key) ==
+        SourceAvailability.unavailable;
+  }
 
   Future<void> load({bool reset = true}) async {
     if (reset) {
@@ -88,8 +103,20 @@ class CatalogViewModel extends ChangeNotifier {
   }
 
   void _onSourceChanged() {
+    final fingerprint = _fingerprint(_sourceRepository.current);
+    if (fingerprint == _sourceFingerprint) {
+      // 可用性更新只刷新标题，不重新拉首页列表。
+      notifyListeners();
+      return;
+    }
+    _sourceFingerprint = fingerprint;
     selectedCategoryId = null;
     load();
+  }
+
+  String _fingerprint(MediaSource? source) {
+    if (source == null) return '';
+    return '${source.key}|${source.api}|${source.type}';
   }
 
   @override

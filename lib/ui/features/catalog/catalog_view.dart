@@ -47,14 +47,23 @@ class _CatalogViewState extends State<CatalogView> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
-        final sourceName = vm.source?.name ?? '未选择源';
+        final sourceName = vm.sourceDisplayName;
+        final sourceStyle = vm.isCurrentUnavailable
+            ? TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+              )
+            : null;
         return Scaffold(
           appBar: AppBar(
             title: const Text('好看视频'),
             actions: [
               TextButton(
                 onPressed: () => context.go('/sources'),
-                child: Text(sourceName, overflow: TextOverflow.ellipsis),
+                child: Text(
+                  sourceName,
+                  overflow: TextOverflow.ellipsis,
+                  style: sourceStyle,
+                ),
               ),
             ],
           ),

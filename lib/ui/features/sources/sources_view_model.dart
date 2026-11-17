@@ -16,6 +16,11 @@ class SourcesViewModel extends ChangeNotifier {
   bool refreshing = false;
   String? message;
 
+  String displayNameOf(MediaSource source) => _sourceRepository.displayNameOf(source);
+
+  bool isUnavailable(MediaSource source) =>
+      _sourceRepository.availabilityOf(source.key) == SourceAvailability.unavailable;
+
   Future<void> select(MediaSource source) async {
     await _sourceRepository.select(source);
   }
@@ -49,6 +54,7 @@ class SourcesViewModel extends ChangeNotifier {
       refreshing = false;
       notifyListeners();
     }
+    await _sourceRepository.probeAll();
   }
 
   @override

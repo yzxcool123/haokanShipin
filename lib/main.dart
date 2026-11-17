@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -19,4 +20,5 @@ Future<void> main() async {
   );
   await sourceRepository.load();
   runApp(HaoKanShiPinApp(sourceRepository: sourceRepository));
+  unawaited(sourceRepository.refreshOnColdStart());
 }
