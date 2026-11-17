@@ -158,31 +158,69 @@ class _PlayerViewState extends State<PlayerView> {
       context: context,
       backgroundColor: const Color(0xFF1C1D22),
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) {
+        final maxHeight = MediaQuery.sizeOf(context).height * 0.7;
+        final landscape =
+            MediaQuery.orientationOf(context) == Orientation.landscape;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(24, 8, 24, 12),
-                child: Text(
-                  '倍速',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(24, 8, 24, 12),
+                  child: Text(
+                    '倍速',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-              for (final speed in _speeds)
-                ListTile(
-                  title: Text(_speedLabel(speed)),
-                  trailing: speed == _speed
-                      ? const Icon(Icons.check, color: _accent)
-                      : null,
-                  selected: speed == _speed,
-                  selectedColor: _accent,
-                  onTap: () => Navigator.pop(context, speed),
-                ),
-              const SizedBox(height: 8),
-            ],
+                if (landscape)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final speed in _speeds)
+                          ChoiceChip(
+                            label: Text(_speedLabel(speed)),
+                            selected: speed == _speed,
+                            selectedColor: _accent,
+                            labelStyle: TextStyle(
+                              color: speed == _speed
+                                  ? Colors.white
+                                  : Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            onSelected: (_) => Navigator.pop(context, speed),
+                          ),
+                      ],
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final speed in _speeds)
+                          ListTile(
+                            title: Text(_speedLabel(speed)),
+                            trailing: speed == _speed
+                                ? const Icon(Icons.check, color: _accent)
+                                : null,
+                            selected: speed == _speed,
+                            selectedColor: _accent,
+                            onTap: () => Navigator.pop(context, speed),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
