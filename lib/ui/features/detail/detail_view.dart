@@ -37,7 +37,8 @@ class _DetailViewState extends State<DetailView> {
   @override
   void didUpdateWidget(covariant DetailView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.sourceKey != widget.sourceKey || oldWidget.vodId != widget.vodId) {
+    if (oldWidget.sourceKey != widget.sourceKey ||
+        oldWidget.vodId != widget.vodId) {
       _viewModel.dispose();
       _viewModel = _createViewModel();
       _viewModel.load();
@@ -80,21 +81,27 @@ class _DetailViewState extends State<DetailView> {
       builder: (context, _) {
         final vm = _viewModel;
         if (vm.loading && vm.detail == null) {
-          return const Scaffold(body: LoadingView());
+          return Scaffold(
+            appBar: AppBar(title: const Text('详情')),
+            body: const LoadingView(),
+          );
         }
         if (vm.error != null && vm.detail == null) {
           return Scaffold(
-            appBar: AppBar(),
+            appBar: AppBar(title: const Text('详情')),
             body: ErrorView(message: vm.error!, onRetry: vm.load),
           );
         }
         final detail = vm.detail;
         if (detail == null) {
-          return const Scaffold(body: EmptyView());
+          return Scaffold(
+            appBar: AppBar(title: const Text('详情')),
+            body: const EmptyView(),
+          );
         }
         final item = detail.item;
         return Scaffold(
-          appBar: AppBar(title: Text(item.name)),
+          appBar: AppBar(title: const Text('详情')),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [
@@ -111,7 +118,8 @@ class _DetailViewState extends State<DetailView> {
                               color: Color(0xFF2A2B31),
                               child: Icon(Icons.movie_outlined),
                             )
-                          : CoverImage(url: item.pic, sourceKey: item.sourceKey),
+                          : CoverImage(
+                              url: item.pic, sourceKey: item.sourceKey),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -119,7 +127,8 @@ class _DetailViewState extends State<DetailView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.name, style: Theme.of(context).textTheme.titleLarge),
+                        Text(item.name,
+                            style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 8),
                         if (item.remarks.isNotEmpty) Text(item.remarks),
                         if (detail.year.isNotEmpty) Text('年份：${detail.year}'),
@@ -132,7 +141,8 @@ class _DetailViewState extends State<DetailView> {
               ),
               if (detail.content.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                Text(detail.content, style: Theme.of(context).textTheme.bodyMedium),
+                Text(detail.content,
+                    style: Theme.of(context).textTheme.bodyMedium),
               ],
               const SizedBox(height: 20),
               if (detail.lines.length > 1)
