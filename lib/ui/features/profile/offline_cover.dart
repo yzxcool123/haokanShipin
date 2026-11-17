@@ -40,16 +40,21 @@ class OfflineCover extends StatelessWidget {
 }
 
 String formatByteSize(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(bytes < 10 * 1024 ? 1 : 0)} KB';
+  final size = bytes < 0 ? 0 : bytes;
+  if (size < 1024) return '$size B';
+  if (size < 1024 * 1024) {
+    return '${(size / 1024).toStringAsFixed(size < 10 * 1024 ? 1 : 0)} KB';
   }
-  if (bytes < 1024 * 1024 * 1024) {
-    final mb = bytes / (1024 * 1024);
+  if (size < 1024 * 1024 * 1024) {
+    final mb = size / (1024 * 1024);
     return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
   }
-  final gb = bytes / (1024 * 1024 * 1024);
-  return '${gb.toStringAsFixed(gb < 10 ? 2 : 1)} GB';
+  if (size < 1024 * 1024 * 1024 * 1024) {
+    final gb = size / (1024 * 1024 * 1024);
+    return '${gb.toStringAsFixed(gb < 10 ? 2 : 1)} GB';
+  }
+  final tb = size / (1024 * 1024 * 1024 * 1024);
+  return '${tb.toStringAsFixed(tb < 10 ? 2 : 1)} TB';
 }
 
 String offlineStatusText(OfflineCacheItem item) {

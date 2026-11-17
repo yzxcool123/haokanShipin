@@ -5,6 +5,7 @@ import '../../../data/repositories/history_repository.dart';
 import '../../../data/repositories/offline_cache_repository.dart';
 import '../../../domain/models/offline_cache_item.dart';
 import 'offline_cover.dart';
+import 'storage_usage_bar.dart';
 
 class DownloadsView extends StatelessWidget {
   const DownloadsView({
@@ -64,11 +65,38 @@ class DownloadsView extends StatelessWidget {
     await context.push('/player', extra: playable);
   }
 
-  Future<void> _delete(BuildContext context, OfflineCacheItem item) async {
+  Future<bool> _confirmRemove(
+    BuildContext context,
+    OfflineCacheItem item,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_removeTitle(item)),
+        content: Text(_removeMessage(item)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _remove(BuildContext context, OfflineCacheItem item) async {
+    final confirmed = await _confirmRemove(context, item);
+    if (!confirmed) return;
+    final status = item.status;
     await offlineCacheRepository.delete(item.id);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已删除缓存')),
+      SnackBar(content: Text(_removedSnackText(status))),
     );
   }
 
@@ -76,55 +104,56 @@ class DownloadsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: offlineCacheRepository,
-      builder: (context, _) {
+      builder: (pageContext, _) {
         final items = offlineCacheRepository.visibleItems;
-        final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55);
+        final muted = Theme.of(pageContext).colorScheme.onSurface.withValues(alpha: 0.55);
         return Scaffold(
           appBar: AppBar(title: const Text('已下载')),
-          body: items.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.download_outlined, size: 40, color: muted),
-                        const SizedBox(height: 12),
-                        Text(
-                          '还没有缓存的影片',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '在详情页或播放页选择「缓存本集」，就可以在这里离线观看。',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(color: muted),
-                        ),
-                      ],
+          body: Column(
+            children: [
+              if (items.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _summaryText(offlineCacheRepository),
+                      style: Theme.of(pageContext)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: muted),
                     ),
                   ),
-                )
-              : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          _summaryText(offlineCacheRepository),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: muted),
+                ),
+              Expanded(
+                child: items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.download_outlined, size: 40, color: muted),
+                              const SizedBox(height: 12),
+                              Text(
+                                '还没有缓存的影片',
+                                style: Theme.of(pageContext).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '在详情页或播放页选择「缓存本集」，就可以在这里离线观看。',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(pageContext)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: muted),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                         itemCount: items.length,
                         itemBuilder: (context, index) {
                           final item = items[index];
@@ -136,7 +165,7 @@ class DownloadsView extends StatelessWidget {
                               padding: const EdgeInsets.only(right: 20),
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.error,
+                                color: Theme.of(pageContext).colorScheme.error,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -144,8 +173,15 @@ class DownloadsView extends StatelessWidget {
                                 color: Colors.white,
                               ),
                             ),
-                            onDismissed: (_) =>
-                                offlineCacheRepository.delete(item.id),
+                            confirmDismiss: (_) =>
+                                _confirmRemove(pageContext, item),
+                            onDismissed: (_) {
+                              final status = item.status;
+                              offlineCacheRepository.delete(item.id);
+                              ScaffoldMessenger.of(pageContext).showSnackBar(
+                                SnackBar(content: Text(_removedSnackText(status))),
+                              );
+                            },
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               child: DecoratedBox(
@@ -155,21 +191,24 @@ class DownloadsView extends StatelessWidget {
                                 ),
                                 child: _DownloadTile(
                                   item: item,
-                                  onTap: () => _open(context, item),
-                                  onCancel: () =>
-                                      offlineCacheRepository.cancel(item.id),
+                                  onTap: () => _open(pageContext, item),
                                   onRetry: () =>
                                       offlineCacheRepository.retry(item.id),
-                                  onDelete: () => _delete(context, item),
+                                  onRemove: () => _remove(pageContext, item),
                                 ),
                               ),
                             ),
                           );
                         },
                       ),
-                    ),
-                  ],
-                ),
+              ),
+              StorageUsageBar(
+                cacheBytes: offlineCacheRepository.totalBytes,
+                cacheItemCount: items.length,
+                activeCount: offlineCacheRepository.activeCount,
+              ),
+            ],
+          ),
         );
       },
     );
@@ -188,108 +227,148 @@ class DownloadsView extends StatelessWidget {
   }
 }
 
+String _removeTitle(OfflineCacheItem item) {
+  switch (item.status) {
+    case OfflineCacheStatus.queued:
+      return '取消缓存';
+    case OfflineCacheStatus.downloading:
+      return '取消下载';
+    case OfflineCacheStatus.completed:
+      return '删除缓存';
+    case OfflineCacheStatus.failed:
+      return '移除记录';
+  }
+}
+
+String _removeMessage(OfflineCacheItem item) {
+  switch (item.status) {
+    case OfflineCacheStatus.queued:
+      return '确认取消这次缓存吗？';
+    case OfflineCacheStatus.downloading:
+      return '确认取消下载并删除已下的不完整文件吗？';
+    case OfflineCacheStatus.completed:
+      return '确认删除这份离线缓存吗？';
+    case OfflineCacheStatus.failed:
+      return '确认移除这条失败记录吗？';
+  }
+}
+
+String _removedSnackText(OfflineCacheStatus status) {
+  switch (status) {
+    case OfflineCacheStatus.queued:
+    case OfflineCacheStatus.downloading:
+      return '已取消缓存';
+    case OfflineCacheStatus.completed:
+      return '已删除缓存';
+    case OfflineCacheStatus.failed:
+      return '已移除记录';
+  }
+}
+
 class _DownloadTile extends StatelessWidget {
   const _DownloadTile({
     required this.item,
     required this.onTap,
-    required this.onCancel,
     required this.onRetry,
-    required this.onDelete,
+    required this.onRemove,
   });
 
   final OfflineCacheItem item;
   final VoidCallback onTap;
-  final VoidCallback onCancel;
   final VoidCallback onRetry;
-  final VoidCallback onDelete;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final statusText = offlineStatusText(item);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            OfflineCover(item: item, width: 56, height: 76, borderRadius: 8),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final removeTooltip = item.isActive
+        ? '取消缓存'
+        : item.isFailed
+            ? '移除记录'
+            : '删除缓存';
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+              child: Row(
                 children: [
-                  Text(
-                    item.displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  OfflineCover(item: item, width: 56, height: 76, borderRadius: 8),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
-                  ),
-                  if (item.displayEpisode.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      item.displayEpisode,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurface.withValues(alpha: 0.62),
+                        if (item.displayEpisode.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            item.displayEpisode,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurface.withValues(alpha: 0.62),
+                                ),
                           ),
-                    ),
-                  ],
-                  const SizedBox(height: 6),
-                  Text(
-                    statusText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: item.isFailed
-                              ? scheme.error
-                              : scheme.onSurface.withValues(alpha: 0.62),
+                        ],
+                        const SizedBox(height: 6),
+                        Text(
+                          statusText,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: item.isFailed
+                                    ? scheme.error
+                                    : scheme.onSurface.withValues(alpha: 0.62),
+                              ),
                         ),
-                  ),
-                  if (item.isActive) ...[
-                    const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                      minHeight: 3,
-                      value: item.status == OfflineCacheStatus.downloading &&
-                              item.progress > 0
-                          ? item.progress.clamp(0.05, 1.0)
-                          : null,
-                      backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
-                      color: const Color(0xFF7C9CFF),
+                        if (item.isActive) ...[
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            minHeight: 3,
+                            value: item.status == OfflineCacheStatus.downloading &&
+                                    item.progress > 0
+                                ? item.progress.clamp(0.05, 1.0)
+                                : null,
+                            backgroundColor:
+                                scheme.onSurface.withValues(alpha: 0.08),
+                            color: const Color(0xFF7C9CFF),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 4),
-            if (item.isActive)
-              IconButton(
-                tooltip: '取消缓存',
-                onPressed: onCancel,
-                icon: const Icon(Icons.close_rounded),
-              )
-            else if (item.isFailed)
-              IconButton(
-                tooltip: '重新缓存',
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-              )
-            else
-              IconButton(
-                tooltip: '删除缓存',
-                onPressed: onDelete,
-                icon: Icon(
-                  Icons.delete_outline_rounded,
-                  color: scheme.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (item.isFailed)
+          IconButton(
+            tooltip: '重新缓存',
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        IconButton(
+          tooltip: removeTooltip,
+          onPressed: onRemove,
+          icon: Icon(
+            item.isActive ? Icons.close_rounded : Icons.delete_outline_rounded,
+            color: scheme.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
     );
   }
 }
