@@ -255,23 +255,34 @@ class SourceRepository extends ChangeNotifier {
   }
 
   MediaSource? get _defaultHealthySource {
+    final preferred = [
+      for (final source in sources)
+        if (source.isHealthyPreferred) source,
+    ];
     final blue = [
       for (final source in sources)
         if (source.isHealthyMarked && source.isSupported) source,
     ];
-    for (final source in blue) {
+    return _firstUsable(preferred) ??
+        preferred.firstOrNull ??
+        _firstUsable(blue) ??
+        blue.firstOrNull ??
+        sources.where((source) => source.isSupported).firstOrNull ??
+        sources.firstOrNull;
+  }
+
+  MediaSource? _firstUsable(List<MediaSource> candidates) {
+    for (final source in candidates) {
       if (availabilityOf(source.key) == SourceAvailability.available) {
         return source;
       }
     }
-    for (final source in blue) {
+    for (final source in candidates) {
       if (availabilityOf(source.key) != SourceAvailability.unavailable) {
         return source;
       }
     }
-    return blue.firstOrNull ??
-        sources.where((source) => source.isSupported).firstOrNull ??
-        sources.firstOrNull;
+    return null;
   }
 
   Future<void> _promoteHealthyDefaultIfNeeded() async {

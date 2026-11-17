@@ -31,6 +31,14 @@ class MediaSource {
 
   bool get isHealthyMarked => name.startsWith('🔵');
 
+  bool get isStarMarked {
+    final normalized = name.replaceAll('\uFE0F', '').trimRight();
+    return normalized.endsWith('⭐') || normalized.endsWith('★');
+  }
+
+  bool get isHealthyPreferred =>
+      isHealthyMarked && isStarMarked && isSupported;
+
   bool get isVisibleInHealthyMode => !isAdultMarked && !isHuangguo;
 
   factory MediaSource.fromJson(

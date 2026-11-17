@@ -34,7 +34,7 @@ class SettingsView extends StatelessWidget {
                   children: [
                     _ModeTile(
                       title: '健康模式',
-                      subtitle: '隐藏带 🔞 标识的源和黄果短剧，并默认使用第一个可用的 🔵 源',
+                      subtitle: '隐藏带 🔞 标识的源和黄果短剧，并默认使用第一个可用的 🔵⭐ 源',
                       selected: mode == ContentMode.healthy,
                       onTap: () =>
                           sourceRepository.setContentMode(ContentMode.healthy),
