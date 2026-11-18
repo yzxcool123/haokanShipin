@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models/media_source.dart';
@@ -72,7 +73,7 @@ class HistoryRepository extends ChangeNotifier {
     } else {
       _records = next;
     }
-    notifyListeners();
+    _notifySafely();
     return _persist();
   }
 
@@ -80,14 +81,28 @@ class HistoryRepository extends ChangeNotifier {
     _records = [
       for (final item in _records) if (item.key != record.key) item,
     ];
-    notifyListeners();
+    _notifySafely();
     return _persist();
   }
 
   Future<void> clear() {
     _records = const [];
-    notifyListeners();
+    _notifySafely();
     return _persist();
+  }
+
+  /// Avoids notifying ListenableBuilder while the widget tree is locked
+  /// (e.g. PlayerView.dispose → savePlayable → upsert).
+  void _notifySafely() {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks) {
+      notifyListeners();
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   void _load() {

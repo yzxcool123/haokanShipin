@@ -350,8 +350,9 @@ class HuangguoApiClient implements VodClient {
       final pagination = videos is Map ? videos['pagination'] : null;
       final items = <VodItem>[];
       for (final item in itemsRaw) {
-        if (item is Map)
+        if (item is Map) {
           items.add(_toSiteItem(Map<String, dynamic>.from(item)));
+        }
       }
       return PagedVod(
         list: items,

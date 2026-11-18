@@ -19,7 +19,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: const Color(0xFF16171C),
-        indicatorColor: seed.withOpacity(0.24),
+        indicatorColor: seed.withValues(alpha: 0.24),
       ),
     );
   }

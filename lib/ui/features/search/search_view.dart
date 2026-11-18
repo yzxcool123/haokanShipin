@@ -49,38 +49,41 @@ class _SearchViewState extends State<SearchView> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
-        return Scaffold(
-          appBar: AppBar(title: const Text('搜索')),
-          body: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: TextField(
-                  controller: _queryController,
-                  decoration: InputDecoration(
-                    hintText: '输入片名或关键词',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 1.5,
+        return GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Scaffold(
+            appBar: AppBar(title: const Text('搜索')),
+            body: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: TextField(
+                    controller: _queryController,
+                    decoration: InputDecoration(
+                      hintText: '输入片名或关键词',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
+                    textInputAction: TextInputAction.search,
+                    onChanged: vm.onQueryChanged,
+                    onSubmitted: vm.submit,
                   ),
-                  textInputAction: TextInputAction.search,
-                  onChanged: vm.onQueryChanged,
-                  onSubmitted: vm.submit,
                 ),
-              ),
-              Expanded(child: _body(vm)),
-            ],
+                Expanded(child: _body(vm)),
+              ],
+            ),
           ),
         );
       },
