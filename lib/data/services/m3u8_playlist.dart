@@ -7,12 +7,14 @@ class M3u8Playlist {
     required this.lines,
     required this.variants,
     required this.mediaUris,
+    this.mediaDuration = 0,
   });
 
   final Uri playlistUri;
   final List<String> lines;
   final List<M3u8Variant> variants;
   final List<M3u8MediaUri> mediaUris;
+  final double mediaDuration;
 
   bool get isMaster => variants.isNotEmpty;
 
@@ -32,6 +34,7 @@ class M3u8Playlist {
     }
 
     Map<String, String>? pendingStreamInf;
+    var mediaDuration = 0.0;
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
       if (line.isEmpty) continue;
@@ -64,6 +67,11 @@ class M3u8Playlist {
             byteRange: attrs['BYTERANGE'],
           );
         }
+        continue;
+      }
+      if (line.startsWith('#EXTINF:')) {
+        final raw = line.substring('#EXTINF:'.length).split(',').first.trim();
+        mediaDuration += double.tryParse(raw) ?? 0;
         continue;
       }
       if (line.startsWith('#')) continue;
@@ -99,6 +107,7 @@ class M3u8Playlist {
       lines: lines,
       variants: variants,
       mediaUris: mediaUris,
+      mediaDuration: mediaDuration,
     );
   }
 

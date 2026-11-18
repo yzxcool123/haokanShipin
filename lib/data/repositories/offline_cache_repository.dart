@@ -44,6 +44,7 @@ class OfflineCacheRepository extends ChangeNotifier {
   List<OfflineCacheItem> _items = const [];
   final List<String> _queue = [];
   final Map<String, CancelToken> _tokens = {};
+  final Map<String, _TransferRate> _rates = {};
   bool _pumping = false;
   DateTime? _lastProgressNotify;
 
@@ -227,6 +228,7 @@ class OfflineCacheRepository extends ChangeNotifier {
       token.cancel('已取消缓存');
     }
     _queue.remove(id);
+    _rates.remove(id);
     final item = findById(id);
     if (item != null && !item.isCompleted) {
       await _deleteFiles(item);
@@ -324,6 +326,9 @@ class OfflineCacheRepository extends ChangeNotifier {
       item.copyWith(
         status: OfflineCacheStatus.downloading,
         progress: 0,
+        bytes: 0,
+        totalBytes: 0,
+        speedBytesPerSec: 0,
         clearError: true,
       ),
       persist: true,
@@ -357,8 +362,14 @@ class OfflineCacheRepository extends ChangeNotifier {
           if (current == null || current.status != OfflineCacheStatus.downloading) {
             return;
           }
+          final rate = _rates.putIfAbsent(id, _TransferRate.new);
           _upsert(
-            current.copyWith(progress: progress.clamp(0.0, 1.0)),
+            current.copyWith(
+              progress: progress.progress.clamp(0.0, 1.0),
+              bytes: progress.receivedBytes,
+              totalBytes: progress.totalBytes,
+              speedBytesPerSec: rate.observe(progress.receivedBytes),
+            ),
             persist: false,
             throttle: true,
           );
@@ -381,6 +392,8 @@ class OfflineCacheRepository extends ChangeNotifier {
           localPath: result.localPath,
           coverPath: coverPath.isNotEmpty ? coverPath : latest.coverPath,
           bytes: result.bytes,
+          totalBytes: result.bytes,
+          speedBytesPerSec: 0,
           status: OfflineCacheStatus.completed,
           progress: 1,
           clearError: true,
@@ -406,11 +419,14 @@ class OfflineCacheRepository extends ChangeNotifier {
           error: _errorMessage(e),
           localPath: '',
           bytes: 0,
+          totalBytes: 0,
+          speedBytesPerSec: 0,
         ),
         persist: true,
       );
     } finally {
       _tokens.remove(id);
+      _rates.remove(id);
       _pendingPlayables.remove(id);
       _pendingEpisodes.remove(id);
     }
@@ -529,6 +545,8 @@ class OfflineCacheRepository extends ChangeNotifier {
               error: '下载中断，请重试',
               localPath: '',
               bytes: 0,
+              totalBytes: 0,
+              speedBytesPerSec: 0,
             )
           else if (item.isCompleted && !localFileExists(item))
             item.copyWith(
@@ -537,6 +555,8 @@ class OfflineCacheRepository extends ChangeNotifier {
               error: '本地文件已丢失，请重新缓存',
               localPath: '',
               bytes: 0,
+              totalBytes: 0,
+              speedBytesPerSec: 0,
             )
           else
             item,
@@ -723,6 +743,34 @@ class OfflineCacheRepository extends ChangeNotifier {
       }
     }
     _tokens.clear();
+    _rates.clear();
     super.dispose();
+  }
+}
+
+class _TransferRate {
+  int _lastBytes = 0;
+  DateTime? _lastAt;
+  double _bytesPerSec = 0;
+
+  int observe(int bytes) {
+    final now = DateTime.now();
+    final previousAt = _lastAt;
+    if (previousAt == null) {
+      _lastBytes = bytes;
+      _lastAt = now;
+      return 0;
+    }
+    final elapsedMs = now.difference(previousAt).inMilliseconds;
+    if (elapsedMs >= 300) {
+      final delta = bytes - _lastBytes;
+      if (delta >= 0) {
+        final inst = delta * 1000 / elapsedMs;
+        _bytesPerSec = _bytesPerSec <= 0 ? inst : (_bytesPerSec * 0.6 + inst * 0.4);
+      }
+      _lastBytes = bytes;
+      _lastAt = now;
+    }
+    return _bytesPerSec.round();
   }
 }

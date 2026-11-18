@@ -20,8 +20,10 @@ class OfflineCacheItem {
     this.localPath = '',
     this.coverPath = '',
     this.bytes = 0,
+    this.totalBytes = 0,
     this.status = OfflineCacheStatus.queued,
     this.progress = 0,
+    this.speedBytesPerSec = 0,
     this.error = '',
     required this.createdAtMs,
     this.completedAtMs = 0,
@@ -38,8 +40,10 @@ class OfflineCacheItem {
   final String localPath;
   final String coverPath;
   final int bytes;
+  final int totalBytes;
   final OfflineCacheStatus status;
   final double progress;
+  final int speedBytesPerSec;
   final String error;
   final int createdAtMs;
   final int completedAtMs;
@@ -80,6 +84,7 @@ class OfflineCacheItem {
       localPath: '${json['localPath'] ?? ''}',
       coverPath: '${json['coverPath'] ?? ''}',
       bytes: _asInt(json['bytes']),
+      totalBytes: _asInt(json['totalBytes']),
       status: offlineCacheStatusFromName('${json['status'] ?? ''}'),
       progress: _asDouble(json['progress']),
       error: '${json['error'] ?? ''}',
@@ -100,6 +105,7 @@ class OfflineCacheItem {
         'localPath': localPath,
         'coverPath': coverPath,
         'bytes': bytes,
+        'totalBytes': totalBytes,
         'status': status.name,
         'progress': progress,
         'error': error,
@@ -137,8 +143,10 @@ class OfflineCacheItem {
     String? localPath,
     String? coverPath,
     int? bytes,
+    int? totalBytes,
     OfflineCacheStatus? status,
     double? progress,
+    int? speedBytesPerSec,
     String? error,
     int? createdAtMs,
     int? completedAtMs,
@@ -156,8 +164,10 @@ class OfflineCacheItem {
       localPath: localPath ?? this.localPath,
       coverPath: coverPath ?? this.coverPath,
       bytes: bytes ?? this.bytes,
+      totalBytes: totalBytes ?? this.totalBytes,
       status: status ?? this.status,
       progress: progress ?? this.progress,
+      speedBytesPerSec: speedBytesPerSec ?? this.speedBytesPerSec,
       error: clearError ? '' : (error ?? this.error),
       createdAtMs: createdAtMs ?? this.createdAtMs,
       completedAtMs: completedAtMs ?? this.completedAtMs,

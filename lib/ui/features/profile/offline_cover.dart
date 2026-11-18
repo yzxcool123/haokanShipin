@@ -57,13 +57,28 @@ String formatByteSize(int bytes) {
   return '${tb.toStringAsFixed(tb < 10 ? 2 : 1)} TB';
 }
 
+String formatByteSpeed(int bytesPerSec) {
+  final speed = bytesPerSec < 0 ? 0 : bytesPerSec;
+  return '${formatByteSize(speed)}/s';
+}
+
 String offlineStatusText(OfflineCacheItem item) {
   switch (item.status) {
     case OfflineCacheStatus.queued:
       return '等待缓存';
     case OfflineCacheStatus.downloading:
       final percent = (item.progress * 100).clamp(0, 100).round();
-      return '正在缓存 $percent%';
+      final parts = <String>['正在缓存 $percent%'];
+      if (item.speedBytesPerSec > 0) {
+        parts.add(formatByteSpeed(item.speedBytesPerSec));
+      }
+      if (item.totalBytes > 0) {
+        final received = item.bytes > 0 ? item.bytes : 0;
+        parts.add('${formatByteSize(received)} / ${formatByteSize(item.totalBytes)}');
+      } else if (item.bytes > 0) {
+        parts.add('已下载 ${formatByteSize(item.bytes)}');
+      }
+      return parts.join(' · ');
     case OfflineCacheStatus.completed:
       return item.bytes > 0 ? formatByteSize(item.bytes) : '已缓存';
     case OfflineCacheStatus.failed:

@@ -28,6 +28,18 @@ class OfflineDownloadResult {
   final int bytes;
 }
 
+class OfflineDownloadProgress {
+  const OfflineDownloadProgress({
+    required this.progress,
+    this.receivedBytes = 0,
+    this.totalBytes = 0,
+  });
+
+  final double progress;
+  final int receivedBytes;
+  final int totalBytes;
+}
+
 /// 将在线播放地址缓存到本地目录，支持整文件和 HLS 分片。
 class OfflineMediaDownloader {
   OfflineMediaDownloader({Dio? client}) : _dio = client ?? _createClient();
@@ -47,13 +59,13 @@ class OfflineMediaDownloader {
     required Playable playable,
     required Directory directory,
     required CancelToken cancelToken,
-    required void Function(double progress) onProgress,
+    required void Function(OfflineDownloadProgress progress) onProgress,
   }) async {
     if (playable.url.isEmpty) {
       throw const OfflineDownloadException('没有可缓存的播放地址');
     }
     await directory.create(recursive: true);
-    onProgress(0);
+    onProgress(const OfflineDownloadProgress(progress: 0));
     if (playable.isHls) {
       return _downloadHls(
         playlistUri: Uri.parse(playable.url),
@@ -75,7 +87,7 @@ class OfflineMediaDownloader {
     required Playable playable,
     required Directory directory,
     required CancelToken cancelToken,
-    required void Function(double progress) onProgress,
+    required void Function(OfflineDownloadProgress progress) onProgress,
   }) async {
     final uri = Uri.parse(playable.url);
     final temp = File('${directory.path}/download.tmp');
@@ -85,9 +97,17 @@ class OfflineMediaDownloader {
       headers: playable.headers,
       cancelToken: cancelToken,
       onReceiveProgress: (received, total) {
-        if (total != null && total > 0) {
-          onProgress((received / total).clamp(0.0, 0.99));
-        }
+        final receivedBytes = received < 0 ? 0 : received;
+        final totalBytes = (total != null && total > 0) ? total : 0;
+        onProgress(
+          OfflineDownloadProgress(
+            progress: totalBytes > 0
+                ? (receivedBytes / totalBytes).clamp(0.0, 0.99)
+                : 0,
+            receivedBytes: receivedBytes,
+            totalBytes: totalBytes,
+          ),
+        );
       },
     );
     final header = await _readPrefix(temp, 32);
@@ -108,7 +128,13 @@ class OfflineMediaDownloader {
       await file.delete();
     }
     await temp.rename(file.path);
-    onProgress(1);
+    onProgress(
+      OfflineDownloadProgress(
+        progress: 1,
+        receivedBytes: await file.length(),
+        totalBytes: await file.length(),
+      ),
+    );
     return OfflineDownloadResult(
       localPath: file.path,
       bytes: await file.length(),
@@ -120,7 +146,7 @@ class OfflineMediaDownloader {
     required Map<String, String> headers,
     required Directory directory,
     required CancelToken cancelToken,
-    required void Function(double progress) onProgress,
+    required void Function(OfflineDownloadProgress progress) onProgress,
   }) async {
     final text = await _getPlaylistText(
       playlistUri,
@@ -143,8 +169,9 @@ class OfflineMediaDownloader {
     required Map<String, String> headers,
     required Directory directory,
     required CancelToken cancelToken,
-    required void Function(double progress) onProgress,
+    required void Function(OfflineDownloadProgress progress) onProgress,
     int depth = 0,
+    int bitrateBps = 0,
   }) async {
     final parsed = M3u8Playlist.parse(text, playlistUri);
     if (parsed.isMaster) {
@@ -168,6 +195,7 @@ class OfflineMediaDownloader {
         cancelToken: cancelToken,
         onProgress: onProgress,
         depth: depth + 1,
+        bitrateBps: variant.effectiveBandwidth,
       );
     }
 
@@ -199,24 +227,71 @@ class OfflineMediaDownloader {
     }
 
     final resources = localNames.entries.toList();
-    var completed = 0;
-    final total = resources.length;
+    final rangeTotal = _totalFromByteRanges(parsed.mediaUris);
+    final estimatedTotal = rangeTotal > 0
+        ? rangeTotal
+        : _estimateFromBandwidth(
+            bitsPerSec: bitrateBps,
+            duration: parsed.mediaDuration,
+          );
+    final inflight = <String, int>{};
+    var completedCount = 0;
+    var completedBytes = 0;
+
+    void emit({bool done = false}) {
+      final received = completedBytes +
+          inflight.values.fold<int>(0, (sum, value) => sum + value);
+      var totalBytes = estimatedTotal;
+      if (rangeTotal <= 0 && completedCount >= 2) {
+        final predicted =
+            ((completedBytes / completedCount) * resources.length).round();
+        if (predicted > 0) totalBytes = predicted;
+      }
+      if (totalBytes > 0 && totalBytes < received) {
+        totalBytes = received;
+      }
+      final progress = done
+          ? 1.0
+          : totalBytes > 0
+              ? (received / totalBytes).clamp(0.0, 0.99)
+              : (completedCount / (resources.length + 1)).clamp(0.0, 0.99);
+      onProgress(
+        OfflineDownloadProgress(
+          progress: progress,
+          receivedBytes: received,
+          totalBytes: totalBytes,
+        ),
+      );
+    }
+
     await _runLimited(resources, _concurrency, (entry) async {
       _throwIfCancelled(cancelToken);
       final file = File('${directory.path}/${entry.value}');
-      await _downloadToFile(
-        Uri.parse(entry.key),
-        file,
-        headers: headers,
-        cancelToken: cancelToken,
-      );
-      completed += 1;
-      onProgress((completed / (total + 1)).clamp(0.0, 0.99));
+      inflight[entry.key] = 0;
+      try {
+        await _downloadToFile(
+          Uri.parse(entry.key),
+          file,
+          headers: headers,
+          cancelToken: cancelToken,
+          onReceiveProgress: (received, _) {
+            inflight[entry.key] = received < 0 ? 0 : received;
+            emit();
+          },
+        );
+      } finally {
+        inflight.remove(entry.key);
+      }
+      if (await file.exists()) {
+        completedBytes += await file.length();
+      }
+      completedCount += 1;
+      emit();
     });
 
     final index = File('${directory.path}/index.m3u8');
     await index.writeAsString(parsed.rewrite(localNames), flush: true);
-    onProgress(1);
+    emit(done: true);
     return OfflineDownloadResult(
       localPath: index.path,
       bytes: await _directoryBytes(directory),
@@ -411,6 +486,29 @@ class OfflineMediaDownloader {
       }
     }
     return bytes;
+  }
+
+  int _byteRangeLength(String? raw) {
+    if (raw == null || raw.isEmpty) return 0;
+    return int.tryParse(raw.split('@').first.trim()) ?? 0;
+  }
+
+  int _totalFromByteRanges(List<M3u8MediaUri> uris) {
+    var total = 0;
+    for (final item in uris) {
+      final length = _byteRangeLength(item.byteRange);
+      if (length <= 0) return 0;
+      total += length;
+    }
+    return total;
+  }
+
+  int _estimateFromBandwidth({
+    required int bitsPerSec,
+    required double duration,
+  }) {
+    if (bitsPerSec <= 0 || duration <= 0) return 0;
+    return (bitsPerSec / 8 * duration).round();
   }
 
   String _extensionOf(Uri uri, String fallback) {
