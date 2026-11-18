@@ -31,8 +31,10 @@ class ProfileViewModel extends ChangeNotifier {
 
   HistoryRepository get history => _historyRepository;
 
+  static const _continueWatchingLimit = 5;
+
   List<WatchRecord> get continueWatching =>
-      _historyRepository.continueWatching;
+      _historyRepository.continueWatching.take(_continueWatchingLimit).toList();
 
   int get historyCount => _historyRepository.records.length;
 
