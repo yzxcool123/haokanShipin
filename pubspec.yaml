@@ -40,3 +40,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sources.json
+    - assets/images/profile_avatar.jpg

@@ -138,25 +138,14 @@ class _ProfileHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF2F4BDB),
-                    Color(0xFF7C9CFF),
-                    Color(0xFFB8E6E0),
-                  ],
-                ),
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 34,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                'assets/images/profile_avatar.jpg',
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                filterQuality: FilterQuality.medium,
               ),
             ),
             const SizedBox(width: 14),
