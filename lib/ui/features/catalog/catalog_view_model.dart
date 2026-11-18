@@ -20,6 +20,7 @@ class CatalogViewModel extends ChangeNotifier {
   final SourceRepository _sourceRepository;
   String? _sourceFingerprint;
   int _loadGeneration = 0;
+  bool _disposed = false;
 
   List<VodCategory> categories = const [];
   List<VodItem> items = const [];
@@ -77,20 +78,20 @@ class CatalogViewModel extends ChangeNotifier {
       }
       loading = !shownCache;
       refreshing = true;
-      notifyListeners();
+      _notify();
     }
 
     try {
       if (reset) {
         try {
           final cats = await _catalogRepository.categories();
-          if (generation != _loadGeneration) return;
+          if (_isStale(generation)) return;
           categories = cats;
           if (sourceKey != null && cats.isNotEmpty) {
             await _catalogRepository.saveCategories(sourceKey, cats);
           }
         } catch (_) {
-          if (generation != _loadGeneration) return;
+          if (_isStale(generation)) return;
           if (categories.isEmpty) categories = const [];
         }
       }
@@ -98,7 +99,7 @@ class CatalogViewModel extends ChangeNotifier {
         page: 1,
         categoryId: categoryId,
       );
-      if (generation != _loadGeneration) return;
+      if (_isStale(generation)) return;
       items = result.list;
       page = result.page;
       pageCount = result.pageCount;
@@ -111,17 +112,15 @@ class CatalogViewModel extends ChangeNotifier {
         );
       }
     } catch (e) {
-      if (generation != _loadGeneration) return;
+      if (_isStale(generation)) return;
       if (items.isEmpty) {
         error = e.toString();
       }
-    } finally {
-      if (generation == _loadGeneration) {
-        loading = false;
-        refreshing = false;
-        notifyListeners();
-      }
     }
+    if (_isStale(generation)) return;
+    loading = false;
+    refreshing = false;
+    _notify();
   }
 
   Future<void> selectCategory(String? id) async {
@@ -130,9 +129,11 @@ class CatalogViewModel extends ChangeNotifier {
   }
 
   Future<void> loadMore() async {
-    if (loading || refreshing || loadingMore || page >= pageCount) return;
+    if (loading || refreshing || loadingMore || page >= pageCount || _disposed) {
+      return;
+    }
     loadingMore = true;
-    notifyListeners();
+    _notify();
     final generation = _loadGeneration;
     try {
       final next = page + 1;
@@ -140,26 +141,25 @@ class CatalogViewModel extends ChangeNotifier {
         page: next,
         categoryId: selectedCategoryId,
       );
-      if (generation != _loadGeneration) return;
+      if (_isStale(generation)) return;
       items = [...items, ...result.list];
       page = result.page;
       pageCount = result.pageCount;
     } catch (e) {
-      if (generation != _loadGeneration) return;
+      if (_isStale(generation)) return;
       error = e.toString();
-    } finally {
-      if (generation == _loadGeneration) {
-        loadingMore = false;
-        notifyListeners();
-      }
     }
+    if (_isStale(generation)) return;
+    loadingMore = false;
+    _notify();
   }
 
   void _onSourceChanged() {
+    if (_disposed) return;
     final fingerprint = _fingerprint(_sourceRepository.current);
     if (fingerprint == _sourceFingerprint) {
       // 可用性更新只刷新标题，不重新拉首页列表。
-      notifyListeners();
+      _notify();
       return;
     }
     _sourceFingerprint = fingerprint;
@@ -172,8 +172,18 @@ class CatalogViewModel extends ChangeNotifier {
     return '${source.key}|${source.api}|${source.type}';
   }
 
+  bool _isStale(int generation) =>
+      _disposed || generation != _loadGeneration;
+
+  void _notify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
+    _loadGeneration++;
     _sourceRepository.removeListener(_onSourceChanged);
     super.dispose();
   }

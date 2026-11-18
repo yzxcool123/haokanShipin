@@ -19,6 +19,7 @@ class SearchViewModel extends ChangeNotifier {
   final CatalogRepository _catalogRepository;
   final SharedPreferences _prefs;
   Timer? _debounce;
+  bool _disposed = false;
 
   static const _historyKey = 'search_history_v1';
   static const _maxHistory = 20;
@@ -37,7 +38,7 @@ class SearchViewModel extends ChangeNotifier {
     if (keyword.isEmpty) {
       items = const [];
       error = null;
-      notifyListeners();
+      _notify();
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 400), search);
@@ -49,43 +50,47 @@ class SearchViewModel extends ChangeNotifier {
     _debounce?.cancel();
     keyword = next;
     await _remember(next);
+    if (_disposed) return;
     await search();
   }
 
   Future<void> search() async {
-    if (keyword.isEmpty) return;
+    if (keyword.isEmpty || _disposed) return;
     loading = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
       final result = await _catalogRepository.list(page: 1, keyword: keyword);
+      if (_disposed) return;
       items = result.list;
       page = result.page;
       pageCount = result.pageCount;
     } catch (e) {
+      if (_disposed) return;
       error = e.toString();
       items = const [];
-    } finally {
-      loading = false;
-      notifyListeners();
     }
+    if (_disposed) return;
+    loading = false;
+    _notify();
   }
 
   Future<void> loadMore() async {
-    if (loading || keyword.isEmpty || page >= pageCount) return;
+    if (loading || keyword.isEmpty || page >= pageCount || _disposed) return;
     try {
       final result =
           await _catalogRepository.list(page: page + 1, keyword: keyword);
+      if (_disposed) return;
       items = [...items, ...result.list];
       page = result.page;
       pageCount = result.pageCount;
-      notifyListeners();
+      _notify();
     } catch (_) {}
   }
 
   Future<void> clearHistory() async {
     history = const [];
-    notifyListeners();
+    _notify();
     await _prefs.remove(_historyKey);
   }
 
@@ -111,7 +116,7 @@ class SearchViewModel extends ChangeNotifier {
         if (item.toLowerCase() != value.toLowerCase()) item,
     ];
     history = next.length > _maxHistory ? next.sublist(0, _maxHistory) : next;
-    notifyListeners();
+    _notify();
     try {
       await _prefs.setString(_historyKey, jsonEncode(history));
     } catch (e) {
@@ -119,8 +124,14 @@ class SearchViewModel extends ChangeNotifier {
     }
   }
 
+  void _notify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _debounce?.cancel();
     super.dispose();
   }

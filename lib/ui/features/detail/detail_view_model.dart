@@ -20,8 +20,8 @@ class DetailViewModel extends ChangeNotifier {
         _historyRepository = historyRepository,
         _favoriteRepository = favoriteRepository,
         _offlineCacheRepository = offlineCacheRepository {
-    _favoriteRepository.addListener(notifyListeners);
-    _offlineCacheRepository.addListener(notifyListeners);
+    _favoriteRepository.addListener(_onDependencyChanged);
+    _offlineCacheRepository.addListener(_onDependencyChanged);
   }
 
   final CatalogRepository _catalogRepository;
@@ -30,6 +30,8 @@ class DetailViewModel extends ChangeNotifier {
   final OfflineCacheRepository _offlineCacheRepository;
   final String sourceKey;
   final String vodId;
+
+  bool _disposed = false;
 
   VodDetail? detail;
   bool loading = true;
@@ -46,9 +48,12 @@ class DetailViewModel extends ChangeNotifier {
   Future<void> load() async {
     loading = true;
     error = null;
-    notifyListeners();
+    _notify();
     try {
-      detail = await _catalogRepository.detail(vodId, sourceKey: sourceKey);
+      final result =
+          await _catalogRepository.detail(vodId, sourceKey: sourceKey);
+      if (_disposed) return;
+      detail = result;
       lineIndex = _preferredLineIndex(detail?.lines ?? const []);
       final record = _historyRepository.find(sourceKey, vodId);
       if (record != null && record.lineName.isNotEmpty) {
@@ -57,16 +62,17 @@ class DetailViewModel extends ChangeNotifier {
         if (index >= 0) lineIndex = index;
       }
     } catch (e) {
+      if (_disposed) return;
       error = e.toString();
-    } finally {
-      loading = false;
-      notifyListeners();
     }
+    if (_disposed) return;
+    loading = false;
+    _notify();
   }
 
   void selectLine(int index) {
     lineIndex = index;
-    notifyListeners();
+    _notify();
   }
 
   Duration _startPosition(Episode episode) {
@@ -189,10 +195,18 @@ class DetailViewModel extends ChangeNotifier {
     );
   }
 
+  void _onDependencyChanged() => _notify();
+
+  void _notify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
-    _favoriteRepository.removeListener(notifyListeners);
-    _offlineCacheRepository.removeListener(notifyListeners);
+    _disposed = true;
+    _favoriteRepository.removeListener(_onDependencyChanged);
+    _offlineCacheRepository.removeListener(_onDependencyChanged);
     super.dispose();
   }
 

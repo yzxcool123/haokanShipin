@@ -17,10 +17,10 @@ class ProfileViewModel extends ChangeNotifier {
         _favoriteRepository = favoriteRepository,
         _offlineCacheRepository = offlineCacheRepository,
         _sourceRepository = sourceRepository {
-    _historyRepository.addListener(notifyListeners);
-    _favoriteRepository.addListener(notifyListeners);
-    _offlineCacheRepository.addListener(notifyListeners);
-    _sourceRepository.addListener(notifyListeners);
+    _historyRepository.addListener(_onDependencyChanged);
+    _favoriteRepository.addListener(_onDependencyChanged);
+    _offlineCacheRepository.addListener(_onDependencyChanged);
+    _sourceRepository.addListener(_onDependencyChanged);
     _loadVersion();
   }
 
@@ -28,6 +28,7 @@ class ProfileViewModel extends ChangeNotifier {
   final FavoriteRepository _favoriteRepository;
   final OfflineCacheRepository _offlineCacheRepository;
   final SourceRepository _sourceRepository;
+  bool _disposed = false;
 
   HistoryRepository get history => _historyRepository;
 
@@ -67,19 +68,28 @@ class ProfileViewModel extends ChangeNotifier {
   Future<void> _loadVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      if (_disposed) return;
       versionLabel = info.version;
-      notifyListeners();
+      _notify();
     } catch (e) {
       debugPrint('load version failed: $e');
     }
   }
 
+  void _onDependencyChanged() => _notify();
+
+  void _notify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
-    _historyRepository.removeListener(notifyListeners);
-    _favoriteRepository.removeListener(notifyListeners);
-    _offlineCacheRepository.removeListener(notifyListeners);
-    _sourceRepository.removeListener(notifyListeners);
+    _disposed = true;
+    _historyRepository.removeListener(_onDependencyChanged);
+    _favoriteRepository.removeListener(_onDependencyChanged);
+    _offlineCacheRepository.removeListener(_onDependencyChanged);
+    _sourceRepository.removeListener(_onDependencyChanged);
     super.dispose();
   }
 }
