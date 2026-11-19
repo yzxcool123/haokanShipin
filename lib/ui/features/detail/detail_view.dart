@@ -1,3 +1,4 @@
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -377,7 +378,7 @@ class _CoverThumb extends StatelessWidget {
     Navigator.of(context).push(
       PageRouteBuilder<void>(
         opaque: false,
-        barrierColor: Colors.black54,
+        barrierColor: Colors.transparent,
         pageBuilder: (context, animation, secondaryAnimation) {
           return FadeTransition(
             opacity: animation,
@@ -434,63 +435,158 @@ class _CoverPreviewPage extends StatefulWidget {
   State<_CoverPreviewPage> createState() => _CoverPreviewPageState();
 }
 
-class _CoverPreviewPageState extends State<_CoverPreviewPage> {
-  final _transform = TransformationController();
-  TapDownDetails? _doubleTapDetails;
+class _CoverPreviewPageState extends State<_CoverPreviewPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _doubleTap;
+  Animation<double>? _scaleAnimation;
+  VoidCallback? _scaleListener;
+  double _chromeOpacity = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _doubleTap = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+  }
 
   @override
   void dispose() {
-    _transform.dispose();
+    final listener = _scaleListener;
+    if (listener != null) {
+      _scaleAnimation?.removeListener(listener);
+    }
+    _doubleTap.dispose();
     super.dispose();
   }
 
-  void _onDoubleTap() {
-    final current = _transform.value.getMaxScaleOnAxis();
-    if (current > 1.05) {
-      _transform.value = Matrix4.identity();
-      return;
+  void _onDoubleTap(ExtendedImageGestureState state) {
+    final pointer = state.pointerDownPosition;
+    final begin = state.gestureDetails?.totalScale ?? 1.0;
+    final end = begin < 1.5 ? 2.5 : 1.0;
+    final oldListener = _scaleListener;
+    if (oldListener != null) {
+      _scaleAnimation?.removeListener(oldListener);
     }
-    final position = _doubleTapDetails?.localPosition ?? Offset.zero;
-    _transform.value = Matrix4.identity()
-      ..translateByDouble(-position.dx, -position.dy, 0, 1)
-      ..scaleByDouble(2.5, 2.5, 2.5, 1)
-      ..translateByDouble(position.dx, position.dy, 0, 1);
+    _doubleTap
+      ..stop()
+      ..reset();
+    late final VoidCallback listener;
+    listener = () {
+      state.handleDoubleTap(
+        scale: _scaleAnimation?.value ?? end,
+        doubleTapPosition: pointer,
+      );
+    };
+    _scaleListener = listener;
+    _scaleAnimation = _doubleTap.drive(Tween<double>(begin: begin, end: end));
+    _scaleAnimation!.addListener(listener);
+    _doubleTap.forward();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-      body: GestureDetector(
-        onDoubleTapDown: (details) => _doubleTapDetails = details,
-        onDoubleTap: _onDoubleTap,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return InteractiveViewer(
-              transformationController: _transform,
-              minScale: 1,
-              maxScale: 5,
-              child: SizedBox(
-                width: constraints.maxWidth,
-                height: constraints.maxHeight,
-                child: CoverImage(
-                  url: widget.url,
-                  sourceKey: widget.sourceKey,
-                  fit: BoxFit.contain,
+    return Material(
+      color: Colors.transparent,
+      child: ExtendedImageSlidePage(
+        slideAxis: SlideAxis.both,
+        slideType: SlideType.onlyImage,
+        onSlidingPage: (state) {
+          final size = MediaQuery.sizeOf(context);
+          final maxDistance = Offset(size.width, size.height).distance / 2;
+          final opacity =
+              (1.0 - state.offset.distance / maxDistance).clamp(0.0, 1.0);
+          if ((opacity - _chromeOpacity).abs() > 0.01) {
+            setState(() => _chromeOpacity = opacity);
+          }
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ExtendedImage(
+              image: CoverImage.providerFor(
+                url: widget.url,
+                sourceKey: widget.sourceKey,
+              ),
+              fit: BoxFit.contain,
+              enableLoadState: true,
+              enableSlideOutPage: true,
+              gaplessPlayback: true,
+              mode: ExtendedImageMode.gesture,
+              filterQuality: FilterQuality.medium,
+              initGestureConfigHandler: (_) => GestureConfig(
+                minScale: 1,
+                animationMinScale: 0.8,
+                maxScale: 5,
+                animationMaxScale: 6,
+                speed: 1,
+                inertialSpeed: 100,
+                initialScale: 1,
+                inPageView: false,
+                initialAlignment: InitialAlignment.center,
+              ),
+              onDoubleTap: _onDoubleTap,
+              loadStateChanged: (state) {
+                switch (state.extendedImageLoadState) {
+                  case LoadState.loading:
+                    return const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    );
+                  case LoadState.failed:
+                    return const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white54,
+                        size: 48,
+                      ),
+                    );
+                  case LoadState.completed:
+                    return null;
+                }
+              },
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                ignoring: _chromeOpacity < 0.05,
+                child: Opacity(
+                  opacity: _chromeOpacity,
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: const Icon(Icons.close, color: Colors.white),
+                        ),
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );

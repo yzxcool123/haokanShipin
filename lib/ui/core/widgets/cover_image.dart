@@ -38,6 +38,17 @@ class CoverImage extends StatelessWidget {
     return (cardWidth * dpr).round().clamp(1, 2048);
   }
 
+  /// 预览大图用的原始 ImageProvider，不做网格解码压缩。
+  static ImageProvider providerFor({
+    required String url,
+    required String sourceKey,
+  }) {
+    if (shouldDecrypt(sourceKey, url)) {
+      return HuangguoCoverImage(url: url);
+    }
+    return CachedNetworkImageProvider(url);
+  }
+
   static bool shouldDecrypt(String sourceKey, String url) {
     if (sourceKey == 'huangguo_web') return true;
     final host = Uri.tryParse(url)?.host ?? '';
