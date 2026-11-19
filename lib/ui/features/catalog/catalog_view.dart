@@ -134,8 +134,12 @@ class _CatalogViewState extends State<CatalogView> {
           ),
           body: Column(
             children: [
-              if (vm.refreshing && vm.items.isNotEmpty)
-                const LinearProgressIndicator(minHeight: 2),
+              SizedBox(
+                height: 2,
+                child: (vm.refreshing && vm.items.isNotEmpty)
+                    ? const LinearProgressIndicator(minHeight: 2)
+                    : null,
+              ),
               if (vm.categories.isNotEmpty) _categoryBar(vm),
               Expanded(child: _body(vm)),
             ],
