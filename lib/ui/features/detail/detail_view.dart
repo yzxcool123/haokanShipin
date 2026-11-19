@@ -8,6 +8,7 @@ import '../../../data/repositories/offline_cache_repository.dart';
 import '../../../domain/models/offline_cache_item.dart';
 import '../../../domain/models/playable.dart';
 import '../../core/widgets/cache_status_button.dart';
+import '../../core/widgets/cover_hero.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import 'detail_view_model.dart';
@@ -21,6 +22,7 @@ class DetailView extends StatefulWidget {
     required this.offlineCacheRepository,
     required this.sourceKey,
     required this.vodId,
+    this.preview,
   });
 
   final CatalogRepository catalogRepository;
@@ -29,6 +31,7 @@ class DetailView extends StatefulWidget {
   final OfflineCacheRepository offlineCacheRepository;
   final String sourceKey;
   final String vodId;
+  final CoverHeroInfo? preview;
 
   @override
   State<DetailView> createState() => _DetailViewState();
@@ -119,6 +122,44 @@ class _DetailViewState extends State<DetailView> {
     }
   }
 
+  Widget _infoHeader(
+    BuildContext context, {
+    required String url,
+    required String sourceKey,
+    required String id,
+    required String title,
+    String remarks = '',
+    String year = '',
+    String actor = '',
+    String typeName = '',
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CoverThumb(
+          url: url,
+          sourceKey: sourceKey,
+          id: id,
+          title: title,
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              if (remarks.isNotEmpty) Text(remarks),
+              if (year.isNotEmpty) Text('年份：$year'),
+              if (actor.isNotEmpty) Text('演员：$actor'),
+              if (typeName.isNotEmpty) Text(typeName),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   PreferredSizeWidget _appBar(DetailViewModel vm,
       {required bool showFavorite}) {
     return AppBar(
@@ -159,55 +200,53 @@ class _DetailViewState extends State<DetailView> {
       listenable: _viewModel,
       builder: (context, _) {
         final vm = _viewModel;
-        if (vm.loading && vm.detail == null) {
-          return Scaffold(
-            appBar: _appBar(vm, showFavorite: false),
-            body: const LoadingView(),
-          );
-        }
-        if (vm.error != null && vm.detail == null) {
-          return Scaffold(
-            appBar: _appBar(vm, showFavorite: false),
-            body: ErrorView(message: vm.error!, onRetry: vm.load),
-          );
-        }
         final detail = vm.detail;
+        final item = detail?.item;
+        final preview = widget.preview;
         if (detail == null) {
           return Scaffold(
             appBar: _appBar(vm, showFavorite: false),
-            body: const EmptyView(),
+            body: Column(
+              children: [
+                if (preview != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    child: _infoHeader(
+                      context,
+                      url: preview.pic,
+                      sourceKey: preview.sourceKey,
+                      id: preview.id,
+                      title: preview.name,
+                      remarks: preview.remarks,
+                      typeName: preview.typeName,
+                    ),
+                  ),
+                Expanded(
+                  child: vm.loading
+                      ? const LoadingView()
+                      : vm.error != null
+                          ? ErrorView(message: vm.error!, onRetry: vm.load)
+                          : const EmptyView(),
+                ),
+              ],
+            ),
           );
         }
-        final item = detail.item;
         return Scaffold(
           appBar: _appBar(vm, showFavorite: true),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _CoverThumb(
-                    url: item.pic,
-                    sourceKey: item.sourceKey,
-                    title: item.name,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.name,
-                            style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 8),
-                        if (item.remarks.isNotEmpty) Text(item.remarks),
-                        if (detail.year.isNotEmpty) Text('年份：${detail.year}'),
-                        if (detail.actor.isNotEmpty) Text('演员：${detail.actor}'),
-                        if (item.typeName.isNotEmpty) Text(item.typeName),
-                      ],
-                    ),
-                  ),
-                ],
+              _infoHeader(
+                context,
+                url: item!.pic,
+                sourceKey: item.sourceKey,
+                id: item.id,
+                title: item.name,
+                remarks: item.remarks,
+                year: detail.year,
+                actor: detail.actor,
+                typeName: item.typeName,
               ),
               if (detail.content.isNotEmpty) ...[
                 const SizedBox(height: 20),
@@ -324,11 +363,13 @@ class _CoverThumb extends StatelessWidget {
   const _CoverThumb({
     required this.url,
     required this.sourceKey,
+    required this.id,
     required this.title,
   });
 
   final String url;
   final String sourceKey;
+  final String id;
   final String title;
 
   void _open(BuildContext context) {
@@ -363,13 +404,17 @@ class _CoverThumb extends StatelessWidget {
           )
         : CoverImage(url: url, sourceKey: sourceKey);
     final clipped = ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: SizedBox(width: 120, height: 168, child: cover),
     );
-    if (url.isEmpty) return clipped;
+    final hero = Hero(
+      tag: CoverHeroInfo.tag(sourceKey, id),
+      child: clipped,
+    );
+    if (url.isEmpty) return hero;
     return GestureDetector(
       onTap: () => _open(context),
-      child: clipped,
+      child: hero,
     );
   }
 }

@@ -9,6 +9,7 @@ import 'data/repositories/source_repository.dart';
 import 'domain/models/playable.dart';
 import 'ui/app_shell.dart';
 import 'ui/core/app_theme.dart';
+import 'ui/core/widgets/cover_hero.dart';
 import 'ui/features/catalog/catalog_view.dart';
 import 'ui/features/catalog/catalog_view_model.dart';
 import 'ui/features/detail/detail_view.dart';
@@ -173,6 +174,7 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
               offlineCacheRepository: _offlineCacheRepository,
               sourceKey: sourceKey,
               vodId: id,
+              preview: coverHeroInfoOf(state.extra),
             );
           },
         ),

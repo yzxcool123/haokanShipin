@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../domain/models/vod_item.dart';
+import '../../core/widgets/cover_hero.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import '../../core/widgets/vod_card.dart';
@@ -99,8 +100,17 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _openDetail(VodItem item) {
-    context.push(
-        '/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.id)}');
+    openDetail(
+      context,
+      CoverHeroInfo(
+        sourceKey: item.sourceKey,
+        id: item.id,
+        name: item.name,
+        pic: item.pic,
+        remarks: item.remarks,
+        typeName: item.typeName,
+      ),
+    );
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/vod_item.dart';
+import 'cover_hero.dart';
 import 'cover_image.dart';
 
 class VodCard extends StatelessWidget {
@@ -24,46 +25,49 @@ class VodCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              clipBehavior: Clip.hardEdge,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ColoredBox(
-                    color: const Color(0xFF2A2B31),
-                    child: CoverImage(
-                      url: item.pic,
-                      sourceKey: item.sourceKey,
-                      cacheWidth: cacheWidth,
+            child: Hero(
+              tag: CoverHeroInfo.tag(item.sourceKey, item.id),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                clipBehavior: Clip.hardEdge,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(
+                      color: const Color(0xFF2A2B31),
+                      child: CoverImage(
+                        url: item.pic,
+                        sourceKey: item.sourceKey,
+                        cacheWidth: cacheWidth,
+                      ),
                     ),
-                  ),
-                  if (item.remarks.isNotEmpty)
-                    Positioned(
-                      left: 6,
-                      right: 6,
-                      bottom: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.65),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          item.remarks,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
+                    if (item.remarks.isNotEmpty)
+                      Positioned(
+                        left: 6,
+                        right: 6,
+                        bottom: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.65),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            item.remarks,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import '../../core/widgets/cover_hero.dart';
 
 import '../../../data/repositories/history_repository.dart';
 import 'watch_record_tile.dart';
@@ -94,8 +94,14 @@ class HistoryView extends StatelessWidget {
                           ),
                           child: WatchRecordTile(
                             record: record,
-                            onTap: () => context.push(
-                              '/detail/${Uri.encodeComponent(record.sourceKey)}/${Uri.encodeComponent(record.vodId)}',
+                            onTap: () => openDetail(
+                              context,
+                              CoverHeroInfo(
+                                sourceKey: record.sourceKey,
+                                id: record.vodId,
+                                name: record.name,
+                                pic: record.pic,
+                              ),
                             ),
                           ),
                         ),

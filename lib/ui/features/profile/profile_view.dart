@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/cover_hero.dart';
+
 import '../../../domain/models/watch_record.dart';
 import 'profile_view_model.dart';
 import 'watch_cover.dart';
@@ -11,8 +13,14 @@ class ProfileView extends StatelessWidget {
   final ProfileViewModel viewModel;
 
   void _openDetail(BuildContext context, WatchRecord record) {
-    context.push(
-      '/detail/${Uri.encodeComponent(record.sourceKey)}/${Uri.encodeComponent(record.vodId)}',
+    openDetail(
+      context,
+      CoverHeroInfo(
+        sourceKey: record.sourceKey,
+        id: record.vodId,
+        name: record.name,
+        pic: record.pic,
+      ),
     );
   }
 
@@ -78,7 +86,11 @@ class ProfileView extends StatelessWidget {
                           : '${viewModel.historyCount} 条',
                       onTap: () => context.push('/history'),
                     ),
-                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    Divider(
+                        height: 1,
+                        indent: 52,
+                        endIndent: 12,
+                        color: dividerColor),
                     _MenuTile(
                       icon: Icons.favorite_rounded,
                       title: '收藏',
@@ -87,28 +99,44 @@ class ProfileView extends StatelessWidget {
                           : '${viewModel.favoriteCount} 部',
                       onTap: () => context.push('/favorites'),
                     ),
-                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    Divider(
+                        height: 1,
+                        indent: 52,
+                        endIndent: 12,
+                        color: dividerColor),
                     _MenuTile(
                       icon: Icons.download_rounded,
                       title: '已下载',
                       subtitle: viewModel.downloadSubtitle,
                       onTap: () => context.push('/downloads'),
                     ),
-                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    Divider(
+                        height: 1,
+                        indent: 52,
+                        endIndent: 12,
+                        color: dividerColor),
                     _MenuTile(
                       icon: Icons.swap_horiz_rounded,
                       title: '数据源',
                       subtitle: viewModel.currentSourceName,
                       onTap: () => context.push('/sources'),
                     ),
-                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    Divider(
+                        height: 1,
+                        indent: 52,
+                        endIndent: 12,
+                        color: dividerColor),
                     _MenuTile(
                       icon: Icons.settings_rounded,
                       title: '设置',
                       subtitle: viewModel.contentModeLabel,
                       onTap: () => context.push('/settings'),
                     ),
-                    Divider(height: 1, indent: 52, endIndent: 12, color: dividerColor),
+                    Divider(
+                        height: 1,
+                        indent: 52,
+                        endIndent: 12,
+                        color: dividerColor),
                     _MenuTile(
                       icon: Icons.info_outline_rounded,
                       title: '关于',
@@ -208,8 +236,10 @@ class _SectionHeader extends StatelessWidget {
             onPressed: onAction,
             style: TextButton.styleFrom(
               visualDensity: VisualDensity.compact,
-              foregroundColor:
-                  Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+              foregroundColor: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.7),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -261,7 +291,8 @@ class _EmptyCard extends StatelessWidget {
         Icon(
           Icons.movie_filter_outlined,
           size: 28,
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+          color:
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
         ),
         const SizedBox(height: 10),
         Text(

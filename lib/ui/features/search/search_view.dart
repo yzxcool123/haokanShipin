@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-
+import '../../core/widgets/cover_hero.dart';
 import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import '../../core/widgets/vod_card.dart';
@@ -129,8 +128,16 @@ class _SearchViewState extends State<SearchView> {
           key: ValueKey('${item.sourceKey}_${item.id}'),
           item: item,
           cacheWidth: cacheWidth,
-          onTap: () => context.push(
-            '/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.id)}',
+          onTap: () => openDetail(
+            context,
+            CoverHeroInfo(
+              sourceKey: item.sourceKey,
+              id: item.id,
+              name: item.name,
+              pic: item.pic,
+              remarks: item.remarks,
+              typeName: item.typeName,
+            ),
           ),
         );
       },

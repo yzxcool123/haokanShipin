@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../data/repositories/favorite_repository.dart';
 import '../../../domain/models/favorite_item.dart';
+import '../../core/widgets/cover_hero.dart';
 import '../../core/widgets/cover_image.dart';
 
 class FavoritesView extends StatelessWidget {
@@ -61,8 +60,15 @@ class FavoritesView extends StatelessWidget {
                           ),
                           child: _FavoriteTile(
                             item: item,
-                            onTap: () => context.push(
-                              '/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.vodId)}',
+                            onTap: () => openDetail(
+                              context,
+                              CoverHeroInfo(
+                                sourceKey: item.sourceKey,
+                                id: item.vodId,
+                                name: item.name,
+                                pic: item.pic,
+                                remarks: item.remarks,
+                              ),
                             ),
                           ),
                         ),
@@ -98,11 +104,14 @@ class _FavoriteTile extends StatelessWidget {
             SizedBox(
               width: 56,
               height: 76,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: ColoredBox(
-                  color: const Color(0xFF2A2B31),
-                  child: CoverImage(url: item.pic, sourceKey: item.sourceKey),
+              child: Hero(
+                tag: CoverHeroInfo.tag(item.sourceKey, item.vodId),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: ColoredBox(
+                    color: const Color(0xFF2A2B31),
+                    child: CoverImage(url: item.pic, sourceKey: item.sourceKey),
+                  ),
                 ),
               ),
             ),
