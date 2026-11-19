@@ -13,3 +13,6 @@ android/local.properties
 ios/Flutter/Generated.xcconfig
 ios/Flutter/flutter_export_environment.sh
 ios/Pods/
+
+# FVM（SDK 本体不入库；版本号看 .fvmrc）
+.fvm/
