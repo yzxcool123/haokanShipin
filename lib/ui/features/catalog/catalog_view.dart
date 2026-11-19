@@ -17,12 +17,25 @@ class CatalogView extends StatefulWidget {
 
 class _CatalogViewState extends State<CatalogView> {
   final _controller = ScrollController();
+  final _categoryScrollController = ScrollController();
+  final _recommendKey = GlobalKey();
+  final _categoryKeys = <String, GlobalKey>{};
+  String? _centeredToken;
+  bool _animateNextCenter = false;
 
   @override
   void initState() {
     super.initState();
     widget.viewModel.load();
     _controller.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant CatalogView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewModel != widget.viewModel) {
+      _centeredToken = null;
+    }
   }
 
   void _onScroll() {
@@ -34,7 +47,54 @@ class _CatalogViewState extends State<CatalogView> {
   @override
   void dispose() {
     _controller.dispose();
+    _categoryScrollController.dispose();
     super.dispose();
+  }
+
+  GlobalKey _keyFor(String? categoryId) {
+    if (categoryId == null) return _recommendKey;
+    return _categoryKeys.putIfAbsent(categoryId, GlobalKey.new);
+  }
+
+  void _maybeCenterSelected(CatalogViewModel vm) {
+    if (vm.categories.isEmpty) return;
+    final token = '${vm.source?.key ?? ''}|${vm.selectedCategoryId ?? ''}';
+    if (token == _centeredToken) return;
+    _centeredToken = token;
+    final animate = _animateNextCenter;
+    _animateNextCenter = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerSelected(vm.selectedCategoryId, animate: animate);
+    });
+  }
+
+  void _centerSelected(String? selectedId,
+      {required bool animate, int attempt = 0}) {
+    if (!mounted) return;
+    final itemContext = _keyFor(selectedId).currentContext;
+    if (itemContext == null || !_categoryScrollController.hasClients) {
+      if (attempt < 8) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _centerSelected(selectedId, animate: animate, attempt: attempt + 1);
+        });
+      }
+      return;
+    }
+    Scrollable.ensureVisible(
+      itemContext,
+      alignment: 0.5,
+      duration: animate ? const Duration(milliseconds: 280) : Duration.zero,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onSelectCategory(String? id) {
+    if (widget.viewModel.selectedCategoryId == id) {
+      _centerSelected(id, animate: true);
+      return;
+    }
+    _animateNextCenter = true;
+    widget.viewModel.selectCategory(id);
   }
 
   void _openDetail(VodItem item) {
@@ -57,6 +117,7 @@ class _CatalogViewState extends State<CatalogView> {
                     .withValues(alpha: 0.55),
               )
             : null;
+        _maybeCenterSelected(vm);
         return Scaffold(
           appBar: AppBar(
             title: const Text('影视'),
@@ -75,38 +136,40 @@ class _CatalogViewState extends State<CatalogView> {
             children: [
               if (vm.refreshing && vm.items.isNotEmpty)
                 const LinearProgressIndicator(minHeight: 2),
-              if (vm.categories.isNotEmpty)
-                SizedBox(
-                  height: 48,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: const Text('推荐'),
-                          selected: vm.selectedCategoryId == null,
-                          onSelected: (_) => vm.selectCategory(null),
-                        ),
-                      ),
-                      for (final category in vm.categories)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(category.name),
-                            selected: vm.selectedCategoryId == category.id,
-                            onSelected: (_) => vm.selectCategory(category.id),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+              if (vm.categories.isNotEmpty) _categoryBar(vm),
               Expanded(child: _body(vm)),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _categoryBar(CatalogViewModel vm) {
+    return SizedBox(
+      height: 48,
+      child: SingleChildScrollView(
+        controller: _categoryScrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _CategoryTab(
+              key: _keyFor(null),
+              label: '推荐',
+              selected: vm.selectedCategoryId == null,
+              onTap: () => _onSelectCategory(null),
+            ),
+            for (final category in vm.categories)
+              _CategoryTab(
+                key: _keyFor(category.id),
+                label: category.name,
+                selected: vm.selectedCategoryId == category.id,
+                onTap: () => _onSelectCategory(category.id),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -139,6 +202,44 @@ class _CatalogViewState extends State<CatalogView> {
           final item = vm.items[index];
           return VodCard(item: item, onTap: () => _openDetail(item));
         },
+      ),
+    );
+  }
+}
+
+class _CategoryTab extends StatelessWidget {
+  const _CategoryTab({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Center(
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            style: TextStyle(
+              fontSize: selected ? 18 : 15,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              height: 1.2,
+              color: onSurface.withValues(alpha: selected ? 1 : 0.55),
+            ),
+            child: Text(label),
+          ),
+        ),
       ),
     );
   }
