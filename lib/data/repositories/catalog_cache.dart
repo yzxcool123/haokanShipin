@@ -23,6 +23,24 @@ class CatalogCache {
 
   String _catsKey(String sourceKey) => 'cc_${Uri.encodeComponent(sourceKey)}';
 
+  String _selectedCategoryKey(String sourceKey) =>
+      'csel_${Uri.encodeComponent(sourceKey)}';
+
+  /// 返回该源上次选中的分类 id；`null` 表示「推荐」。
+  String? selectedCategoryId(String sourceKey) {
+    final raw = _prefs.getString(_selectedCategoryKey(sourceKey));
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
+  Future<void> saveSelectedCategoryId(String sourceKey, String? categoryId) {
+    final key = _selectedCategoryKey(sourceKey);
+    if (categoryId == null || categoryId.isEmpty) {
+      return _prefs.setString(key, '');
+    }
+    return _prefs.setString(key, categoryId);
+  }
+
   List<VodCategory>? categories(String sourceKey) {
     final key = _catsKey(sourceKey);
     final memory = _categories[key];

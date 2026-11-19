@@ -14,6 +14,7 @@ class CatalogViewModel extends ChangeNotifier {
         _sourceRepository = sourceRepository {
     _sourceFingerprint = _fingerprint(_sourceRepository.current);
     _sourceRepository.addListener(_onSourceChanged);
+    _restoreSelectedCategory();
   }
 
   final CatalogRepository _catalogRepository;
@@ -50,7 +51,7 @@ class CatalogViewModel extends ChangeNotifier {
   Future<void> load({bool reset = true}) async {
     final generation = ++_loadGeneration;
     final sourceKey = source?.key;
-    final categoryId = selectedCategoryId;
+    var categoryId = selectedCategoryId;
 
     if (reset) {
       error = null;
@@ -60,6 +61,9 @@ class CatalogViewModel extends ChangeNotifier {
         final cachedCats = _catalogRepository.cachedCategories(sourceKey);
         if (cachedCats != null && cachedCats.isNotEmpty) {
           categories = cachedCats;
+          if (_dropInvalidCategory()) {
+            categoryId = selectedCategoryId;
+          }
         }
         final cachedPage = _catalogRepository.cachedFirstPage(
           sourceKey: sourceKey,
@@ -89,6 +93,9 @@ class CatalogViewModel extends ChangeNotifier {
           categories = cats;
           if (sourceKey != null && cats.isNotEmpty) {
             await _catalogRepository.saveCategories(sourceKey, cats);
+          }
+          if (_dropInvalidCategory()) {
+            categoryId = selectedCategoryId;
           }
         } catch (_) {
           if (_isStale(generation)) return;
@@ -125,11 +132,19 @@ class CatalogViewModel extends ChangeNotifier {
 
   Future<void> selectCategory(String? id) async {
     selectedCategoryId = id;
+    final sourceKey = source?.key;
+    if (sourceKey != null) {
+      await _catalogRepository.saveSelectedCategoryId(sourceKey, id);
+    }
     await load();
   }
 
   Future<void> loadMore() async {
-    if (loading || refreshing || loadingMore || page >= pageCount || _disposed) {
+    if (loading ||
+        refreshing ||
+        loadingMore ||
+        page >= pageCount ||
+        _disposed) {
       return;
     }
     loadingMore = true;
@@ -163,8 +178,30 @@ class CatalogViewModel extends ChangeNotifier {
       return;
     }
     _sourceFingerprint = fingerprint;
-    selectedCategoryId = null;
+    _restoreSelectedCategory();
     load();
+  }
+
+  void _restoreSelectedCategory() {
+    final sourceKey = source?.key;
+    if (sourceKey == null) {
+      selectedCategoryId = null;
+      return;
+    }
+    selectedCategoryId = _catalogRepository.selectedCategoryId(sourceKey);
+  }
+
+  /// 若记住的分类在当前源中已不存在，则回到「推荐」。
+  bool _dropInvalidCategory() {
+    final id = selectedCategoryId;
+    if (id == null || categories.isEmpty) return false;
+    if (categories.any((item) => item.id == id)) return false;
+    selectedCategoryId = null;
+    final sourceKey = source?.key;
+    if (sourceKey != null) {
+      _catalogRepository.saveSelectedCategoryId(sourceKey, null);
+    }
+    return true;
   }
 
   String _fingerprint(MediaSource? source) {
@@ -172,8 +209,7 @@ class CatalogViewModel extends ChangeNotifier {
     return '${source.key}|${source.api}|${source.type}';
   }
 
-  bool _isStale(int generation) =>
-      _disposed || generation != _loadGeneration;
+  bool _isStale(int generation) => _disposed || generation != _loadGeneration;
 
   void _notify() {
     if (_disposed) return;

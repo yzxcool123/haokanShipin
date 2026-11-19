@@ -94,6 +94,14 @@ class CatalogRepository {
     );
   }
 
+  String? selectedCategoryId(String sourceKey) {
+    return _cache.selectedCategoryId(sourceKey);
+  }
+
+  Future<void> saveSelectedCategoryId(String sourceKey, String? categoryId) {
+    return _cache.saveSelectedCategoryId(sourceKey, categoryId);
+  }
+
   MediaSource _sourceByKey(String? sourceKey) {
     if (sourceKey == null || sourceKey.isEmpty) return requireSource;
     return _sourceRepository.sources.firstWhere(
