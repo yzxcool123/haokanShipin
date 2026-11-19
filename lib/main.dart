@@ -11,6 +11,8 @@ import 'data/services/doh_resolver.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PaintingBinding.instance.imageCache.maximumSize = 500;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 200 << 20;
   DohResolver.instance;
   HttpOverrides.global = DohHttpOverrides();
   final prefs = await SharedPreferences.getInstance();

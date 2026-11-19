@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../domain/models/vod_item.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import '../../core/widgets/vod_card.dart';
 import 'catalog_view_model.dart';
@@ -104,48 +105,63 @@ class _CatalogViewState extends State<CatalogView> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.viewModel,
-      builder: (context, _) {
-        final vm = widget.viewModel;
-        final sourceName = vm.sourceDisplayName;
-        final sourceStyle = vm.isCurrentUnavailable
-            ? TextStyle(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.55),
-              )
-            : null;
-        _maybeCenterSelected(vm);
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('影视'),
-            actions: [
-              TextButton(
+    final vm = widget.viewModel;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('影视'),
+        actions: [
+          ListenableBuilder(
+            listenable: vm,
+            builder: (context, _) {
+              final sourceStyle = vm.isCurrentUnavailable
+                  ? TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.55),
+                    )
+                  : null;
+              return TextButton(
                 onPressed: () => context.push('/sources'),
                 child: Text(
-                  sourceName,
+                  vm.sourceDisplayName,
                   overflow: TextOverflow.ellipsis,
                   style: sourceStyle,
                 ),
-              ),
-            ],
+              );
+            },
           ),
-          body: Column(
-            children: [
-              SizedBox(
-                height: 2,
-                child: (vm.refreshing && vm.items.isNotEmpty)
-                    ? const LinearProgressIndicator(minHeight: 2)
-                    : null,
-              ),
-              if (vm.categories.isNotEmpty) _categoryBar(vm),
-              Expanded(child: _body(vm)),
-            ],
+        ],
+      ),
+      body: Column(
+        children: [
+          ListenableBuilder(
+            listenable: vm,
+            builder: (context, _) {
+              _maybeCenterSelected(vm);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 2,
+                    child: (vm.refreshing && vm.items.isNotEmpty)
+                        ? const LinearProgressIndicator(minHeight: 2)
+                        : null,
+                  ),
+                  if (vm.categories.isNotEmpty) _categoryBar(vm),
+                ],
+              );
+            },
           ),
-        );
-      },
+          Expanded(
+            child: _CatalogPane(
+              viewModel: vm,
+              controller: _controller,
+              onOpen: _openDetail,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -176,35 +192,108 @@ class _CatalogViewState extends State<CatalogView> {
       ),
     );
   }
+}
 
-  Widget _body(CatalogViewModel vm) {
-    if (vm.loading && vm.items.isEmpty) {
+class _CatalogPane extends StatefulWidget {
+  const _CatalogPane({
+    required this.viewModel,
+    required this.controller,
+    required this.onOpen,
+  });
+
+  final CatalogViewModel viewModel;
+  final ScrollController controller;
+  final void Function(VodItem item) onOpen;
+
+  @override
+  State<_CatalogPane> createState() => _CatalogPaneState();
+}
+
+class _CatalogPaneState extends State<_CatalogPane> {
+  late List<VodItem> _items;
+  late bool _loading;
+  late bool _loadingMore;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _copy(widget.viewModel);
+    widget.viewModel.addListener(_onChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CatalogPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.viewModel != widget.viewModel) {
+      oldWidget.viewModel.removeListener(_onChanged);
+      _copy(widget.viewModel);
+      widget.viewModel.addListener(_onChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.viewModel.removeListener(_onChanged);
+    super.dispose();
+  }
+
+  void _onChanged() {
+    final vm = widget.viewModel;
+    if (identical(_items, vm.items) &&
+        _loading == vm.loading &&
+        _loadingMore == vm.loadingMore &&
+        _error == vm.error) {
+      return;
+    }
+    setState(() => _copy(vm));
+  }
+
+  void _copy(CatalogViewModel vm) {
+    _items = vm.items;
+    _loading = vm.loading;
+    _loadingMore = vm.loadingMore;
+    _error = vm.error;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading && _items.isEmpty) {
       return const LoadingView();
     }
-    if (vm.error != null && vm.items.isEmpty) {
-      return ErrorView(message: vm.error!, onRetry: vm.load);
+    if (_error != null && _items.isEmpty) {
+      return ErrorView(message: _error!, onRetry: widget.viewModel.load);
     }
-    if (vm.items.isEmpty) {
+    if (_items.isEmpty) {
       return const EmptyView(message: '当前源没有列表数据');
     }
+    final cacheWidth = CoverImage.cacheWidthForGrid(context);
     return RefreshIndicator(
-      onRefresh: vm.load,
+      onRefresh: widget.viewModel.load,
       child: GridView.builder(
-        controller: _controller,
+        controller: widget.controller,
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        addAutomaticKeepAlives: false,
+        addSemanticIndexes: false,
+        cacheExtent: 400,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           mainAxisSpacing: 12,
           crossAxisSpacing: 10,
           childAspectRatio: 0.58,
         ),
-        itemCount: vm.items.length + (vm.loadingMore ? 1 : 0),
+        itemCount: _items.length + (_loadingMore ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index >= vm.items.length) {
+          if (index >= _items.length) {
             return const Center(child: CircularProgressIndicator());
           }
-          final item = vm.items[index];
-          return VodCard(item: item, onTap: () => _openDetail(item));
+          final item = _items[index];
+          return VodCard(
+            key: ValueKey('${item.sourceKey}_${item.id}'),
+            item: item,
+            cacheWidth: cacheWidth,
+            onTap: () => widget.onOpen(item),
+          );
         },
       ),
     );

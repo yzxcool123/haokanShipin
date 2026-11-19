@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/cover_image.dart';
 import '../../core/widgets/status_views.dart';
 import '../../core/widgets/vod_card.dart';
 import 'search_view_model.dart';
@@ -108,9 +109,13 @@ class _SearchViewState extends State<SearchView> {
     if (vm.items.isEmpty) {
       return const EmptyView(message: '没有搜到相关内容');
     }
+    final cacheWidth = CoverImage.cacheWidthForGrid(context);
     return GridView.builder(
       controller: _controller,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+      addAutomaticKeepAlives: false,
+      addSemanticIndexes: false,
+      cacheExtent: 400,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 12,
@@ -121,7 +126,9 @@ class _SearchViewState extends State<SearchView> {
       itemBuilder: (context, index) {
         final item = vm.items[index];
         return VodCard(
+          key: ValueKey('${item.sourceKey}_${item.id}'),
           item: item,
+          cacheWidth: cacheWidth,
           onTap: () => context.push(
             '/detail/${Uri.encodeComponent(item.sourceKey)}/${Uri.encodeComponent(item.id)}',
           ),
