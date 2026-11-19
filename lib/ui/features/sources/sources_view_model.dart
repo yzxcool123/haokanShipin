@@ -24,6 +24,11 @@ class SourcesViewModel extends ChangeNotifier {
       _sourceRepository.availabilityOf(source.key) ==
       SourceAvailability.unavailable;
 
+  bool isProbing(MediaSource source) => _sourceRepository.isProbing(source.key);
+
+  int? latencyMsOf(MediaSource source) =>
+      _sourceRepository.latencyMsOf(source.key);
+
   Future<void> select(MediaSource source) async {
     await _sourceRepository.select(source);
   }
@@ -62,7 +67,7 @@ class SourcesViewModel extends ChangeNotifier {
       await _sourceRepository.probeAll();
       if (_disposed) return;
       message = listError == null
-          ? '源列表已更新，并完成可用性检测'
+          ? '源列表已更新，并完成可用性与延迟检测'
           : '源列表刷新失败，已按当前列表完成可用性检测：$listError';
     } catch (e) {
       if (_disposed) return;

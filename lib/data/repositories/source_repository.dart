@@ -28,6 +28,7 @@ class SourceRepository extends ChangeNotifier {
   static const _customKey = 'custom_sources_json';
   static const _remoteCacheKey = 'remote_sources_json';
   static const _contentModeKey = 'content_mode_v1';
+  static const _latencyKey = 'source_latency_ms_v1';
   static const _probeTimeout = Duration(seconds: 8);
   static const _probeConcurrency = 5;
 
@@ -39,6 +40,8 @@ class SourceRepository extends ChangeNotifier {
   List<MediaSource> _custom = const [];
   String? _selectedKeyValue;
   final Map<String, SourceAvailability> _availability = {};
+  final Map<String, int> _latencyMs = {};
+  final Set<String> _probing = {};
   int _probeGeneration = 0;
   MediaSource? _localHuangguo;
   ContentMode _contentMode = ContentMode.healthy;
@@ -80,6 +83,10 @@ class SourceRepository extends ChangeNotifier {
     return _availability[key] ?? SourceAvailability.unknown;
   }
 
+  int? latencyMsOf(String key) => _latencyMs[key];
+
+  bool isProbing(String key) => _probing.contains(key);
+
   String displayNameOf(MediaSource source) {
     if (source.isHuangguo) return source.name;
     if (availabilityOf(source.key) == SourceAvailability.unavailable) {
@@ -102,6 +109,7 @@ class SourceRepository extends ChangeNotifier {
     }
     _selectedKeyValue = _prefs.getString(_selectedKey);
     _autoSelected = false;
+    _readLatencies();
     await _reconcileSelection();
     notifyListeners();
   }
@@ -141,17 +149,29 @@ class SourceRepository extends ChangeNotifier {
   Future<void> probeAll() async {
     final generation = ++_probeGeneration;
     final list = sources;
-    for (final source in list.where((item) => item.isHuangguo)) {
-      _availability[source.key] = SourceAvailability.available;
-    }
-    final targets =
-        list.where((source) => source.isSupported && !source.isHuangguo).toList();
-    _availability.removeWhere((key, _) => list.every((source) => source.key != key));
+    final targets = list.where((source) => source.isSupported).toList();
+    _availability.removeWhere(
+      (key, _) => list.every((source) => source.key != key),
+    );
+    _latencyMs.removeWhere(
+      (key, _) => list.every((source) => source.key != key),
+    );
+    _probing
+      ..clear()
+      ..addAll([for (final source in targets) source.key]);
     for (final source in targets) {
-      _availability[source.key] = SourceAvailability.checking;
+      _latencyMs.remove(source.key);
+      if (source.isHuangguo) {
+        _availability[source.key] = SourceAvailability.available;
+      } else {
+        _availability[source.key] = SourceAvailability.checking;
+      }
     }
     notifyListeners();
-    if (targets.isEmpty) return;
+    if (targets.isEmpty) {
+      _probing.clear();
+      return;
+    }
 
     var next = 0;
     Future<void> worker() async {
@@ -160,10 +180,24 @@ class SourceRepository extends ChangeNotifier {
         next += 1;
         if (index >= targets.length) return;
         final source = targets[index];
-        final status = await _probe(source);
+        final result = await _probe(source);
         if (generation != _probeGeneration) return;
-        if (sources.every((item) => item.key != source.key)) continue;
-        _availability[source.key] = status;
+        if (sources.every((item) => item.key != source.key)) {
+          _probing.remove(source.key);
+          continue;
+        }
+        if (source.isHuangguo) {
+          _availability[source.key] = SourceAvailability.available;
+        } else {
+          _availability[source.key] = result.status;
+        }
+        if (result.latencyMs != null) {
+          _latencyMs[source.key] = result.latencyMs!;
+        } else {
+          _latencyMs.remove(source.key);
+        }
+        _probing.remove(source.key);
+        await _writeLatencies();
         notifyListeners();
       }
     }
@@ -178,14 +212,18 @@ class SourceRepository extends ChangeNotifier {
     await _promoteHealthyDefaultIfNeeded();
   }
 
-  Future<SourceAvailability> _probe(MediaSource source) async {
-    if (source.isHuangguo) return SourceAvailability.available;
+  Future<_ProbeResult> _probe(MediaSource source) async {
+    final stopwatch = Stopwatch()..start();
     try {
       final client = createVodClient(source);
       await client.categories().timeout(_probeTimeout);
-      return SourceAvailability.available;
+      stopwatch.stop();
+      return _ProbeResult(
+        status: SourceAvailability.available,
+        latencyMs: stopwatch.elapsedMilliseconds,
+      );
     } catch (_) {
-      return SourceAvailability.unavailable;
+      return const _ProbeResult(status: SourceAvailability.unavailable);
     }
   }
 
@@ -216,7 +254,10 @@ class SourceRepository extends ChangeNotifier {
     if (!source.custom) return;
     _custom = _custom.where((item) => item.key != source.key).toList();
     _availability.remove(source.key);
+    _latencyMs.remove(source.key);
+    _probing.remove(source.key);
     await _saveCustom();
+    await _writeLatencies();
     if (_selectedKeyValue == source.key) {
       await _applyDefaultSelection(force: true);
     }
@@ -328,7 +369,8 @@ class SourceRepository extends ChangeNotifier {
   /// 远程/缓存列表里的黄果条目一律丢掉，改用本地单独适配的源。
   List<MediaSource> _withLocalHuangguo(List<MediaSource> sources) {
     final pinned = _pinnedHuangguo;
-    final others = sources.where((source) => !_isHuangguoEntry(source)).toList();
+    final others =
+        sources.where((source) => !_isHuangguoEntry(source)).toList();
     final index = sources.indexWhere(_isHuangguoEntry);
     if (index < 0 || index >= others.length) {
       return [pinned, ...others];
@@ -347,9 +389,30 @@ class SourceRepository extends ChangeNotifier {
     if (sites is! List) return const [];
     return [
       for (final item in sites)
-        if (item is Map)
-          MediaSource.fromJson(Map<String, dynamic>.from(item)),
+        if (item is Map) MediaSource.fromJson(Map<String, dynamic>.from(item)),
     ];
+  }
+
+  void _readLatencies() {
+    final raw = _prefs.getString(_latencyKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      _latencyMs
+        ..clear()
+        ..addEntries([
+          for (final entry in decoded.entries)
+            if (entry.value is num)
+              MapEntry('${entry.key}', (entry.value as num).round()),
+        ]);
+    } catch (_) {
+      // 忽略损坏的延迟缓存。
+    }
+  }
+
+  Future<void> _writeLatencies() {
+    return _prefs.setString(_latencyKey, jsonEncode(_latencyMs));
   }
 
   List<MediaSource> _loadRemoteCache() {
@@ -383,4 +446,11 @@ class SourceRepository extends ChangeNotifier {
     final raw = jsonEncode([for (final item in _custom) item.toJson()]);
     await _prefs.setString(_customKey, raw);
   }
+}
+
+class _ProbeResult {
+  const _ProbeResult({required this.status, this.latencyMs});
+
+  final SourceAvailability status;
+  final int? latencyMs;
 }
