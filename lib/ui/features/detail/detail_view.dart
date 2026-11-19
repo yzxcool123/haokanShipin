@@ -119,7 +119,8 @@ class _DetailViewState extends State<DetailView> {
     }
   }
 
-  PreferredSizeWidget _appBar(DetailViewModel vm, {required bool showFavorite}) {
+  PreferredSizeWidget _appBar(DetailViewModel vm,
+      {required bool showFavorite}) {
     return AppBar(
       title: const Text('详情'),
       actions: [
@@ -128,7 +129,9 @@ class _DetailViewState extends State<DetailView> {
             tooltip: vm.isFavorite ? '取消收藏' : '收藏',
             onPressed: () => _toggleFavorite(vm),
             icon: Icon(
-              vm.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              vm.isFavorite
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
               color: vm.isFavorite ? const Color(0xFFFF7A9C) : null,
             ),
           ),
@@ -184,19 +187,10 @@ class _DetailViewState extends State<DetailView> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 120,
-                      height: 168,
-                      child: item.pic.isEmpty
-                          ? const ColoredBox(
-                              color: Color(0xFF2A2B31),
-                              child: Icon(Icons.movie_outlined),
-                            )
-                          : CoverImage(
-                              url: item.pic, sourceKey: item.sourceKey),
-                    ),
+                  _CoverThumb(
+                    url: item.pic,
+                    sourceKey: item.sourceKey,
+                    title: item.name,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -271,7 +265,6 @@ class _DetailViewState extends State<DetailView> {
   }
 }
 
-
 class _EpisodeChip extends StatelessWidget {
   const _EpisodeChip({
     required this.title,
@@ -321,6 +314,138 @@ class _EpisodeChip extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoverThumb extends StatelessWidget {
+  const _CoverThumb({
+    required this.url,
+    required this.sourceKey,
+    required this.title,
+  });
+
+  final String url;
+  final String sourceKey;
+  final String title;
+
+  void _open(BuildContext context) {
+    if (url.isEmpty) return;
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black54,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: animation,
+            child: _CoverPreviewPage(
+              url: url,
+              sourceKey: sourceKey,
+              title: title,
+            ),
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cover = url.isEmpty
+        ? const ColoredBox(
+            color: Color(0xFF2A2B31),
+            child: Icon(Icons.movie_outlined),
+          )
+        : CoverImage(url: url, sourceKey: sourceKey);
+    final clipped = ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(width: 120, height: 168, child: cover),
+    );
+    if (url.isEmpty) return clipped;
+    return GestureDetector(
+      onTap: () => _open(context),
+      child: clipped,
+    );
+  }
+}
+
+class _CoverPreviewPage extends StatefulWidget {
+  const _CoverPreviewPage({
+    required this.url,
+    required this.sourceKey,
+    required this.title,
+  });
+
+  final String url;
+  final String sourceKey;
+  final String title;
+
+  @override
+  State<_CoverPreviewPage> createState() => _CoverPreviewPageState();
+}
+
+class _CoverPreviewPageState extends State<_CoverPreviewPage> {
+  final _transform = TransformationController();
+  TapDownDetails? _doubleTapDetails;
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  void _onDoubleTap() {
+    final current = _transform.value.getMaxScaleOnAxis();
+    if (current > 1.05) {
+      _transform.value = Matrix4.identity();
+      return;
+    }
+    final position = _doubleTapDetails?.localPosition ?? Offset.zero;
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(-position.dx, -position.dy, 0, 1)
+      ..scaleByDouble(2.5, 2.5, 2.5, 1)
+      ..translateByDouble(position.dx, position.dy, 0, 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          widget.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: GestureDetector(
+        onDoubleTapDown: (details) => _doubleTapDetails = details,
+        onDoubleTap: _onDoubleTap,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return InteractiveViewer(
+              transformationController: _transform,
+              minScale: 1,
+              maxScale: 5,
+              child: SizedBox(
+                width: constraints.maxWidth,
+                height: constraints.maxHeight,
+                child: CoverImage(
+                  url: widget.url,
+                  sourceKey: widget.sourceKey,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
