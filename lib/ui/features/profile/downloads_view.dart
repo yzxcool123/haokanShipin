@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../data/repositories/history_repository.dart';
 import '../../../data/repositories/offline_cache_repository.dart';
 import '../../../domain/models/offline_cache_item.dart';
+import '../../../domain/models/playable.dart';
 import 'offline_cover.dart';
 import 'storage_usage_bar.dart';
 
@@ -62,7 +63,42 @@ class DownloadsView extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
-    await context.push('/player', extra: playable);
+    await context.push(
+      '/player',
+      extra: PlayerSession(
+        playable: playable,
+        episodes: _siblingEpisodes(item),
+      ),
+    );
+  }
+
+  List<Episode> _siblingEpisodes(OfflineCacheItem item) {
+    final siblings = [
+      for (final other in offlineCacheRepository.items)
+        if (other.sourceKey == item.sourceKey &&
+            other.vodId == item.vodId &&
+            other.lineName == item.lineName &&
+            other.isCompleted &&
+            offlineCacheRepository.localFileExists(other))
+          other,
+    ]..sort(_compareCacheEpisodes);
+    return [
+      for (final other in siblings)
+        Episode(
+          id: other.episodeId,
+          title: other.episodeTitle.isNotEmpty ? other.episodeTitle : other.name,
+          url: other.localPath,
+        ),
+    ];
+  }
+
+  int _compareCacheEpisodes(OfflineCacheItem a, OfflineCacheItem b) {
+    final aId = int.tryParse(a.episodeId);
+    final bId = int.tryParse(b.episodeId);
+    if (aId != null && bId != null) return aId.compareTo(bId);
+    final byId = a.episodeId.compareTo(b.episodeId);
+    if (byId != 0) return byId;
+    return a.createdAtMs.compareTo(b.createdAtMs);
   }
 
   Future<bool> _confirmRemove(

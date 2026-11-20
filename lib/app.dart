@@ -181,14 +181,20 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
         GoRoute(
           path: '/player',
           builder: (context, state) {
-            final playable = state.extra;
-            if (playable is! Playable) {
+            final extra = state.extra;
+            final session = extra is PlayerSession
+                ? extra
+                : extra is Playable
+                    ? PlayerSession(playable: extra)
+                    : null;
+            if (session == null) {
               return const Scaffold(body: Center(child: Text('没有可播放的地址')));
             }
             return PlayerView(
-              playable: playable,
+              session: session,
               historyRepository: _historyRepository,
               offlineCacheRepository: _offlineCacheRepository,
+              catalogRepository: _catalogRepository,
             );
           },
         ),

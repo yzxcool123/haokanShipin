@@ -89,3 +89,26 @@ class Playable {
     );
   }
 }
+
+class PlayerSession {
+  const PlayerSession({
+    required this.playable,
+    this.episodes = const [],
+  });
+
+  final Playable playable;
+
+  /// Sibling episodes on the current play line. Empty or a single
+  /// item means the player should stay in one-episode mode.
+  final List<Episode> episodes;
+
+  bool get canSwitchEpisodes => episodes.length > 1;
+
+  int get initialIndex {
+    if (episodes.isEmpty) return 0;
+    final id = playable.episodeId;
+    if (id.isEmpty) return 0;
+    final index = episodes.indexWhere((episode) => episode.id == id);
+    return index >= 0 ? index : 0;
+  }
+}

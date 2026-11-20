@@ -77,7 +77,13 @@ class _DetailViewState extends State<DetailView> {
     try {
       final playable = await _viewModel.play(episode);
       if (!mounted) return;
-      await context.push('/player', extra: playable);
+      await context.push(
+        '/player',
+        extra: PlayerSession(
+          playable: playable,
+          episodes: _viewModel.currentLine?.episodes ?? const [],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));

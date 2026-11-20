@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../data/repositories/catalog_repository.dart';
 import '../../../data/repositories/history_repository.dart';
 import '../../../data/repositories/offline_cache_repository.dart';
 import '../../../domain/models/offline_cache_item.dart';
@@ -15,17 +16,30 @@ import '../../core/widgets/cache_status_button.dart';
 class PlayerView extends StatefulWidget {
   const PlayerView({
     super.key,
-    required this.playable,
+    required this.session,
     required this.historyRepository,
     required this.offlineCacheRepository,
+    required this.catalogRepository,
   });
 
-  final Playable playable;
+  final PlayerSession session;
   final HistoryRepository historyRepository;
   final OfflineCacheRepository offlineCacheRepository;
+  final CatalogRepository catalogRepository;
 
   @override
   State<PlayerView> createState() => _PlayerViewState();
+}
+
+class _PlayerSlot {
+  VideoPlayerController? controller;
+  Playable? playable;
+  int? index;
+  int generation = 0;
+  Future<void>? pending;
+
+  bool get isReady =>
+      controller != null && controller!.value.isInitialized;
 }
 
 class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
@@ -34,21 +48,60 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   static const _seekStep = Duration(seconds: 10);
   static const _hideAfter = Duration(seconds: 3);
 
-  VideoPlayerController? _controller;
+  final List<_PlayerSlot> _slots = [_PlayerSlot(), _PlayerSlot()];
+  final Map<String, Playable> _resolved = {};
+  final Map<String, Future<Playable>> _resolving = {};
+  final Map<String, Duration> _sessionPositions = {};
+
+  late Playable _playable;
+  late List<Episode> _episodes;
+  late int _currentIndex;
+  PageController? _pageController;
+
   String? _error;
   bool _fullscreen = false;
   bool _panelVisible = true;
   bool _dragging = false;
   Duration? _dragPosition;
   double _speed = 1.0;
+  bool _swipeTowardPrev = false;
+  int _switchSeq = 0;
+  DateTime? _hintAt;
   Timer? _hideTimer;
   Timer? _historyTimer;
+
+  bool get _canSwitch => _episodes.length > 1;
+
+  VideoPlayerController? get _controller =>
+      _slotForIndex(_currentIndex)?.controller;
+
+  bool get _swipeEnabled {
+    if (!_canSwitch || _fullscreen) return false;
+    return MediaQuery.orientationOf(context) != Orientation.landscape;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.offlineCacheRepository.addListener(_onCacheUpdated);
+    _playable = widget.session.playable;
+    _episodes = widget.session.episodes.isNotEmpty
+        ? List<Episode>.from(widget.session.episodes)
+        : [
+            Episode(
+              id: _playable.episodeId,
+              title: _playable.episodeTitle.isNotEmpty
+                  ? _playable.episodeTitle
+                  : _playable.title,
+              url: _playable.url,
+            ),
+          ];
+    final initial = widget.session.initialIndex;
+    _currentIndex = initial.clamp(0, _episodes.length - 1);
+    if (_canSwitch) {
+      _pageController = PageController(initialPage: _currentIndex);
+    }
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
@@ -59,56 +112,351 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   }
 
   Future<void> _init() async {
-    try {
-      final playable = widget.playable;
-      late final VideoPlayerController controller;
-      if (playable.isLocal) {
-        final file = File(_localFilePath(playable.url));
-        if (!await file.exists()) {
-          if (mounted) {
-            setState(() => _error = '本地文件已丢失，请重新缓存或从已下载中删除');
-          }
-          return;
-        }
-        // 本地 HLS 需要带上 formatHint，file 构造函数不支持该参数。
-        if (playable.isHls) {
-          controller = VideoPlayerController.networkUrl(
-            Uri.file(file.path),
-            formatHint: VideoFormat.hls,
-          );
-        } else {
-          controller = VideoPlayerController.file(file);
-        }
-      } else {
-        controller = VideoPlayerController.networkUrl(
-          Uri.parse(playable.url),
-          httpHeaders: playable.headers,
-          formatHint: playable.isHls ? VideoFormat.hls : null,
+    await _loadSlot(_slots[0], _currentIndex, autoplay: true);
+  }
+
+  _PlayerSlot? _slotForIndex(int index) {
+    for (final slot in _slots) {
+      if (slot.index == index) return slot;
+    }
+    return null;
+  }
+
+  _PlayerSlot _slotToRecycle() {
+    for (final slot in _slots) {
+      if (slot.index != _currentIndex) return slot;
+    }
+    return _slots.last;
+  }
+
+  Duration _startPosition(Episode episode) {
+    final saved = _sessionPositions[episode.id];
+    if (saved != null) return saved;
+    if (episode.id == widget.session.playable.episodeId) {
+      return widget.session.playable.startPosition;
+    }
+    final meta = widget.session.playable;
+    if (!meta.canTrackHistory) return Duration.zero;
+    final record = widget.historyRepository.find(meta.sourceKey, meta.vodId);
+    if (record != null &&
+        !record.isFinished &&
+        record.episodeId == episode.id) {
+      return Duration(milliseconds: record.positionMs);
+    }
+    return Duration.zero;
+  }
+
+  String _titleOf(Playable playable, Episode episode, Playable meta) {
+    if (playable.title.isNotEmpty) return playable.title;
+    if (meta.name.isNotEmpty && episode.title.isNotEmpty) {
+      return '${meta.name} ${episode.title}';
+    }
+    if (episode.title.isNotEmpty) return episode.title;
+    return meta.title;
+  }
+
+  Future<Playable> _resolveFromRepos(Episode episode) async {
+    final meta = widget.session.playable;
+    final start = _startPosition(episode);
+    final item = widget.offlineCacheRepository.findEpisode(
+      sourceKey: meta.sourceKey,
+      vodId: meta.vodId,
+      lineName: meta.lineName,
+      episodeId: episode.id,
+    );
+    if (item != null) {
+      final local = widget.offlineCacheRepository.localPlayable(
+        item,
+        startPosition: start,
+      );
+      if (local != null) return local;
+    }
+    final playable = await widget.catalogRepository.play(
+      id: meta.vodId,
+      episode: episode,
+      lineName: meta.lineName,
+      sourceKey: meta.sourceKey,
+    );
+    return playable.copyWith(
+      sourceKey: meta.sourceKey,
+      vodId: meta.vodId,
+      name: meta.name.isNotEmpty ? meta.name : playable.name,
+      pic: meta.pic.isNotEmpty ? meta.pic : playable.pic,
+      sourceName: meta.sourceName.isNotEmpty
+          ? meta.sourceName
+          : playable.sourceName,
+      lineName: meta.lineName,
+      episodeId: episode.id,
+      episodeTitle: episode.title,
+      title: _titleOf(playable, episode, meta),
+      startPosition: start,
+    );
+  }
+
+  Future<Playable> _resolvePlayable(Episode episode) {
+    final cached = _resolved[episode.id];
+    if (cached != null) {
+      return Future.value(cached.copyWith(startPosition: _startPosition(episode)));
+    }
+    final inflight = _resolving[episode.id];
+    if (inflight != null) {
+      return inflight.then(
+        (playable) => playable.copyWith(startPosition: _startPosition(episode)),
+      );
+    }
+    final future = _resolveFromRepos(episode).then((playable) {
+      _resolved[episode.id] = playable;
+      return playable;
+    });
+    _resolving[episode.id] = future;
+    return future.whenComplete(() => _resolving.remove(episode.id));
+  }
+
+  Future<VideoPlayerController> _createController(Playable playable) async {
+    if (playable.isLocal) {
+      final file = File(_localFilePath(playable.url));
+      if (!await file.exists()) {
+        throw StateError('local-missing');
+      }
+      // 本地 HLS 需要带上 formatHint，file 构造函数不支持该参数。
+      if (playable.isHls) {
+        return VideoPlayerController.networkUrl(
+          Uri.file(file.path),
+          formatHint: VideoFormat.hls,
         );
       }
-      _controller = controller;
-      controller.addListener(_onVideoUpdated);
+      return VideoPlayerController.file(file);
+    }
+    return VideoPlayerController.networkUrl(
+      Uri.parse(playable.url),
+      httpHeaders: playable.headers,
+      formatHint: playable.isHls ? VideoFormat.hls : null,
+    );
+  }
+
+  Future<void> _loadSlot(
+    _PlayerSlot slot,
+    int index, {
+    required bool autoplay,
+  }) {
+    final future = _openSlot(slot, index, autoplay: autoplay);
+    slot.pending = future;
+    return future;
+  }
+
+  Future<void> _openSlot(
+    _PlayerSlot slot,
+    int index, {
+    required bool autoplay,
+  }) async {
+    final gen = ++slot.generation;
+    final episode = _episodes[index];
+    final existing = slot.controller;
+    slot.controller = null;
+    slot.playable = null;
+    if (existing != null) {
+      existing.removeListener(_onVideoUpdated);
+      await existing.dispose();
+    }
+    if (!mounted || slot.generation != gen) return;
+
+    slot.index = index;
+    try {
+      final playable = await _resolvePlayable(episode);
+      if (!mounted || slot.generation != gen) return;
+      final controller = await _createController(playable);
+      if (!mounted || slot.generation != gen) {
+        await controller.dispose();
+        return;
+      }
       await controller.initialize();
+      if (!mounted || slot.generation != gen) {
+        await controller.dispose();
+        return;
+      }
       if (_speed != 1.0) {
         await controller.setPlaybackSpeed(_speed);
       }
-      final start = widget.playable.startPosition;
+      final start = _startPosition(episode);
       final duration = controller.value.duration;
       if (start > const Duration(seconds: 3) &&
           duration > Duration.zero &&
           start < duration - const Duration(seconds: 3)) {
         await controller.seekTo(start);
       }
+      if (!mounted || slot.generation != gen) {
+        await controller.dispose();
+        return;
+      }
+      final shouldPlay = autoplay && index == _currentIndex;
+      if (shouldPlay) {
+        await controller.setVolume(1);
+        await controller.play();
+        controller.addListener(_onVideoUpdated);
+      } else {
+        await controller.setVolume(0);
+        await controller.pause();
+      }
+      if (!mounted || slot.generation != gen) {
+        await controller.dispose();
+        return;
+      }
+      slot.controller = controller;
+      slot.playable = playable;
+      if (index == _currentIndex) {
+        _playable = playable;
+        _error = null;
+        _saveHistory();
+        _startHistoryTimer();
+        _scheduleHide();
+        _prefetchNeighborPlayables();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _prepareNeighbor();
+        });
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('player load failed: $e');
+      if (!mounted || slot.generation != gen || index != _currentIndex) return;
+      final message = e is StateError && e.message == 'local-missing'
+          ? '本地文件已丢失，请重新缓存或从已下载中删除'
+          : '播放失败，请稍后重试';
+      setState(() => _error = message);
+    }
+  }
+
+  void _prefetchNeighborPlayables() {
+    if (!_canSwitch) return;
+    for (final index in [_currentIndex - 1, _currentIndex + 1]) {
+      if (index < 0 || index >= _episodes.length) continue;
+      final episode = _episodes[index];
+      if (_resolved.containsKey(episode.id) ||
+          _resolving.containsKey(episode.id)) {
+        continue;
+      }
+      unawaited(_resolvePlayable(episode));
+    }
+  }
+
+  int? _preferredNeighborIndex() {
+    final last = _episodes.length - 1;
+    final next = _currentIndex < last ? _currentIndex + 1 : null;
+    final prev = _currentIndex > 0 ? _currentIndex - 1 : null;
+    if (_swipeTowardPrev) return prev ?? next;
+    return next ?? prev;
+  }
+
+  void _prepareNeighbor() {
+    if (!_canSwitch || !mounted) return;
+    final target = _preferredNeighborIndex();
+    if (target == null) return;
+    if (_slotForIndex(target) != null) return;
+    unawaited(_loadSlot(_slotToRecycle(), target, autoplay: false));
+  }
+
+  Future<void> _switchToPage(int index) async {
+    if (index == _currentIndex || index < 0 || index >= _episodes.length) {
+      return;
+    }
+    final seq = ++_switchSeq;
+    final oldIndex = _currentIndex;
+    _swipeTowardPrev = index < oldIndex;
+
+    final current = _slotForIndex(oldIndex);
+    final position = current?.controller?.value.position;
+    if (position != null) {
+      _sessionPositions[_playable.episodeId] = position;
+    }
+    _saveHistory();
+    current?.controller?.removeListener(_onVideoUpdated);
+    await current?.controller?.pause();
+    if (!mounted || seq != _switchSeq) return;
+
+    _currentIndex = index;
+    _error = null;
+    _panelVisible = true;
+    _dragging = false;
+    _dragPosition = null;
+
+    var prepared = _slotForIndex(index);
+    if (prepared != null && !prepared.isReady && prepared.pending != null) {
+      if (mounted) setState(() {});
+      await prepared.pending;
+      if (!mounted || seq != _switchSeq) return;
+      prepared = _slotForIndex(index);
+    }
+
+    if (prepared != null && prepared.isReady) {
+      final controller = prepared.controller!;
+      controller.addListener(_onVideoUpdated);
+      await controller.setVolume(1);
+      if (_speed != controller.value.playbackSpeed) {
+        await controller.setPlaybackSpeed(_speed);
+      }
       await controller.play();
-      if (!mounted) return;
-      setState(() {});
+      if (!mounted || seq != _switchSeq) return;
+      if (prepared.playable != null) {
+        _playable = prepared.playable!;
+      }
+      if (mounted) setState(() {});
       _saveHistory();
       _startHistoryTimer();
       _scheduleHide();
-    } catch (e) {
-      debugPrint('player init failed: $e');
-      if (mounted) setState(() => _error = '播放失败，请稍后重试');
+    } else {
+      if (mounted) setState(() {});
+      final slot = prepared ?? _slotToRecycle();
+      await _loadSlot(slot, index, autoplay: true);
+      if (!mounted || seq != _switchSeq) return;
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || seq != _switchSeq) return;
+      _prefetchNeighborPlayables();
+      _prepareNeighbor();
+    });
+  }
+
+  void _goToEpisode(int index) {
+    if (index < 0 || index >= _episodes.length || index == _currentIndex) {
+      return;
+    }
+    final controller = _pageController;
+    if (controller != null && controller.hasClients) {
+      controller.jumpToPage(index);
+      return;
+    }
+    unawaited(_switchToPage(index));
+  }
+
+  bool _onOverscroll(OverscrollNotification notification) {
+    if (!_swipeEnabled) return false;
+    if (!notification.metrics.atEdge) return false;
+    if (notification.overscroll < -2 && _currentIndex <= 0) {
+      _showEdgeHint('已经是第一集');
+    } else if (notification.overscroll > 2 &&
+        _currentIndex >= _episodes.length - 1) {
+      _showEdgeHint('已经是最后一集');
+    }
+    return false;
+  }
+
+  void _showEdgeHint(String text) {
+    final now = DateTime.now();
+    if (_hintAt != null &&
+        now.difference(_hintAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _hintAt = now;
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(text),
+        duration: const Duration(milliseconds: 1200),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _onVideoUpdated() {
@@ -273,8 +621,13 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     );
     if (!mounted) return;
     if (selected != null) {
-      await _controller?.setPlaybackSpeed(selected);
       setState(() => _speed = selected);
+      for (final slot in _slots) {
+        final controller = slot.controller;
+        if (controller != null && controller.value.isInitialized) {
+          unawaited(controller.setPlaybackSpeed(selected));
+        }
+      }
     }
     _scheduleHide();
   }
@@ -311,9 +664,6 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     _hideTimer?.cancel();
     _historyTimer?.cancel();
     _saveHistory();
-    _controller?.removeListener(_onVideoUpdated);
-    await _controller?.dispose();
-    _controller = null;
     if (!mounted) return;
     setState(() {
       _error = null;
@@ -321,7 +671,8 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
       _dragging = false;
       _dragPosition = null;
     });
-    await _init();
+    final slot = _slotForIndex(_currentIndex) ?? _slots.first;
+    await _loadSlot(slot, _currentIndex, autoplay: true);
   }
 
   String _speedLabel(double speed) {
@@ -347,7 +698,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   }
 
   void _saveHistory() {
-    final playable = widget.playable;
+    final playable = _playable;
     if (!playable.canTrackHistory) return;
     final value = _controller?.value;
     final position = value?.position ?? Duration.zero;
@@ -378,8 +729,13 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     WakelockPlus.disable();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
-    _controller?.removeListener(_onVideoUpdated);
-    _controller?.dispose();
+    _pageController?.dispose();
+    for (final slot in _slots) {
+      slot.generation++;
+      slot.controller?.removeListener(_onVideoUpdated);
+      slot.controller?.dispose();
+      slot.controller = null;
+    }
     super.dispose();
   }
 
@@ -401,16 +757,19 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
           body: Stack(
             fit: StackFit.expand,
             children: [
-              _buildVideo(),
+              _buildVideoLayer(),
               Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _controller == null || _error != null
-                      ? null
-                      : _onTapVideo,
-                  onDoubleTap: _controller == null || _error != null
-                      ? null
-                      : _togglePlay,
+                child: IgnorePointer(
+                  ignoring: _error != null,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _controller == null || _error != null
+                        ? null
+                        : _onTapVideo,
+                    onDoubleTap: _controller == null || _error != null
+                        ? null
+                        : _togglePlay,
+                  ),
                 ),
               ),
               if (_panelVisible) _buildPanel(),
@@ -421,7 +780,24 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildVideo() {
+  Widget _buildVideoLayer() {
+    if (!_canSwitch) return _buildSingleVideo();
+    return NotificationListener<OverscrollNotification>(
+      onNotification: _onOverscroll,
+      child: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        physics: _swipeEnabled
+            ? const PageScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        itemCount: _episodes.length,
+        onPageChanged: (index) => unawaited(_switchToPage(index)),
+        itemBuilder: (context, index) => _buildPage(index),
+      ),
+    );
+  }
+
+  Widget _buildSingleVideo() {
     if (_error != null) {
       return _PlayerMessage(
         message: _error!,
@@ -433,6 +809,26 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     if (controller == null || !controller.value.isInitialized) {
       return const Center(child: CircularProgressIndicator(color: _accent));
     }
+    return _videoBox(controller);
+  }
+
+  Widget _buildPage(int index) {
+    if (_error != null && index == _currentIndex) {
+      return _PlayerMessage(
+        message: _error!,
+        actionLabel: '重试',
+        onAction: _retry,
+      );
+    }
+    final slot = _slotForIndex(index);
+    final controller = slot?.controller;
+    if (controller != null && controller.value.isInitialized) {
+      return _videoBox(controller);
+    }
+    return const Center(child: CircularProgressIndicator(color: _accent));
+  }
+
+  Widget _videoBox(VideoPlayerController controller) {
     final aspect = controller.value.aspectRatio == 0
         ? 16 / 9
         : controller.value.aspectRatio;
@@ -447,7 +843,6 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     );
   }
 
-
   void _onCacheUpdated() {
     if (mounted) setState(() {});
   }
@@ -460,7 +855,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   }
 
   OfflineCacheItem? get _cacheItem {
-    final playable = widget.playable;
+    final playable = _playable;
     if (playable.sourceKey.isEmpty ||
         playable.vodId.isEmpty ||
         playable.episodeId.isEmpty) {
@@ -474,11 +869,11 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     );
   }
 
-  bool get _alreadyLocal => widget.playable.isLocal;
+  bool get _alreadyLocal => _playable.isLocal;
 
   Future<void> _cacheCurrent() async {
     try {
-      await widget.offlineCacheRepository.cachePlayable(widget.playable);
+      await widget.offlineCacheRepository.cachePlayable(_playable);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已开始缓存本集')),
@@ -513,6 +908,16 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     }
   }
 
+  Widget _absorbVerticalSwipe(Widget child) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: (_) {},
+      onVerticalDragUpdate: (_) {},
+      onVerticalDragEnd: (_) {},
+      child: child,
+    );
+  }
+
   Widget _buildPanel() {
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
@@ -522,7 +927,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     final duration = value?.duration ?? Duration.zero;
     final position = _dragPosition ?? value?.position ?? Duration.zero;
     final playing = value?.isPlaying ?? false;
-    final title = widget.playable.title.isEmpty ? '播放' : widget.playable.title;
+    final title = _playable.title.isEmpty ? '播放' : _playable.title;
     final maxMs = duration.inMilliseconds.toDouble();
     final posMs =
         position.inMilliseconds.clamp(0, duration.inMilliseconds).toDouble();
@@ -570,73 +975,88 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
             top: 0,
             left: 0,
             right: 0,
-            child: SizedBox(
-              height: 48,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: _onBack,
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  ),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+            child: _absorbVerticalSwipe(
+              SizedBox(
+                height: 48,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _onBack,
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  if (widget.playable.canTrackHistory)
-                    CacheStatusButton(
-                      item: _alreadyLocal
-                          ? (_cacheItem ??
-                              OfflineCacheItem(
-                                sourceKey: widget.playable.sourceKey,
-                                vodId: widget.playable.vodId,
-                                name: widget.playable.name,
-                                episodeId: widget.playable.episodeId,
-                                status: OfflineCacheStatus.completed,
-                                createdAtMs: 0,
-                              ))
-                          : _cacheItem,
-                      onCache: _cacheCurrent,
-                      onCancel: _cancelCache,
-                      onRetry: _retryCache,
-                      color: Colors.white,
-                      iconSize: 22,
-                    ),
-                ],
+                    if (_canSwitch) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_currentIndex + 1}/${_episodes.length}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (_playable.canTrackHistory)
+                      CacheStatusButton(
+                        item: _alreadyLocal
+                            ? (_cacheItem ??
+                                OfflineCacheItem(
+                                  sourceKey: _playable.sourceKey,
+                                  vodId: _playable.vodId,
+                                  name: _playable.name,
+                                  episodeId: _playable.episodeId,
+                                  status: OfflineCacheStatus.completed,
+                                  createdAtMs: 0,
+                                ))
+                            : _cacheItem,
+                        onCache: _cacheCurrent,
+                        onCancel: _cancelCache,
+                        onRetry: _retryCache,
+                        color: Colors.white,
+                        iconSize: 22,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
           if (ready)
             Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _RoundControlButton(
-                    icon: Icons.replay_10,
-                    size: seekSize,
-                    onPressed: () => _seekRelative(-_seekStep),
-                  ),
-                  SizedBox(width: landscape ? 36 : 28),
-                  _RoundControlButton(
-                    icon: playing ? Icons.pause : Icons.play_arrow,
-                    size: playSize,
-                    iconSize: landscape ? 34 : 40,
-                    onPressed: _togglePlay,
-                  ),
-                  SizedBox(width: landscape ? 36 : 28),
-                  _RoundControlButton(
-                    icon: Icons.forward_10,
-                    size: seekSize,
-                    onPressed: () => _seekRelative(_seekStep),
-                  ),
-                ],
+              child: _absorbVerticalSwipe(
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _RoundControlButton(
+                      icon: Icons.replay_10,
+                      size: seekSize,
+                      onPressed: () => _seekRelative(-_seekStep),
+                    ),
+                    SizedBox(width: landscape ? 36 : 28),
+                    _RoundControlButton(
+                      icon: playing ? Icons.pause : Icons.play_arrow,
+                      size: playSize,
+                      iconSize: landscape ? 34 : 40,
+                      onPressed: _togglePlay,
+                    ),
+                    SizedBox(width: landscape ? 36 : 28),
+                    _RoundControlButton(
+                      icon: Icons.forward_10,
+                      size: seekSize,
+                      onPressed: () => _seekRelative(_seekStep),
+                    ),
+                  ],
+                ),
               ),
             ),
           if (ready)
@@ -644,16 +1064,18 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
               left: 0,
               right: 0,
               bottom: 0,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  landscape ? 12 : 8,
-                  0,
-                  landscape ? 12 : 8,
-                  landscape ? 4 : 8,
+              child: _absorbVerticalSwipe(
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    landscape ? 12 : 8,
+                    0,
+                    landscape ? 12 : 8,
+                    landscape ? 4 : 8,
+                  ),
+                  child: landscape
+                      ? _buildLandscapeBottom(position, duration, maxMs, posMs)
+                      : _buildPortraitBottom(position, duration, maxMs, posMs),
                 ),
-                child: landscape
-                    ? _buildLandscapeBottom(position, duration, maxMs, posMs)
-                    : _buildPortraitBottom(position, duration, maxMs, posMs),
               ),
             ),
         ],
@@ -697,11 +1119,37 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     return Row(
       children: [
         _TimeLabel(_formatDuration(position)),
+        if (_canSwitch) _buildEpisodeButton(prev: true),
         Expanded(child: _buildSlider(maxMs, posMs)),
+        if (_canSwitch) _buildEpisodeButton(prev: false),
         _TimeLabel(_formatDuration(duration)),
         _buildSpeedButton(),
         _buildFullscreenButton(),
       ],
+    );
+  }
+
+  Widget _buildEpisodeButton({required bool prev}) {
+    final enabled =
+        prev ? _currentIndex > 0 : _currentIndex < _episodes.length - 1;
+    return TextButton(
+      onPressed: enabled
+          ? () => _goToEpisode(prev ? _currentIndex - 1 : _currentIndex + 1)
+          : null,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+      child: Text(
+        prev ? '上一集' : '下一集',
+        style: TextStyle(
+          color: enabled ? Colors.white : Colors.white38,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+      ),
     );
   }
 
