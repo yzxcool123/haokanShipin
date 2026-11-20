@@ -1,7 +1,7 @@
 name: haokan_shipin
 description: 蓝果短剧，可切换数据源的个人短剧 App
 publish_to: "none"
-version: 1.0.1+20261118
+version: 1.1.0+20261120
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
