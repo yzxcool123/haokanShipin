@@ -12,6 +12,26 @@ enum SourceAvailability { unknown, checking, available, unavailable }
 
 enum ContentMode { healthy, adult }
 
+/// 可切换的远程源列表。默认「推荐」沿用原来的地址和缓存，其它列表按需加载。
+class SourceListCatalog {
+  const SourceListCatalog({
+    required this.id,
+    required this.name,
+    required this.url,
+    this.pinHuangguo = false,
+    this.useBundledFallback = false,
+    this.cmsOnly = false,
+  });
+
+  final String id;
+  final String name;
+  final String url;
+  final bool pinHuangguo;
+  final bool useBundledFallback;
+  /// 只保留苹果 CMS（type 1）且带 http(s) 接口的源，用于 TVBox 完整配置。
+  final bool cmsOnly;
+}
+
 class SourceRepository extends ChangeNotifier {
   SourceRepository({
     required SharedPreferences prefs,
@@ -22,9 +42,27 @@ class SourceRepository extends ChangeNotifier {
         _http = http ?? JsonHttp();
 
   static const bundledAsset = 'assets/sources.json';
+  static const defaultListId = 'default';
   static const remoteConfigUrl =
       'https://cdn.jsdelivr.net/gh/SikROo/huangguo-spider@v10.4/all_sources_config.json';
+  static const sourceLists = [
+    SourceListCatalog(
+      id: defaultListId,
+      name: '推荐',
+      url: remoteConfigUrl,
+      pinHuangguo: true,
+      useBundledFallback: true,
+    ),
+    SourceListCatalog(
+      id: 'niubihu',
+      name: '牛虎',
+      url:
+          'https://gh-proxy.com/https://raw.githubusercontent.com/niubihu1/tvbox/main/1.json',
+      cmsOnly: true,
+    ),
+  ];
   static const _selectedKey = 'selected_source_key';
+  static const _selectedListKey = 'selected_source_list_id_v1';
   static const _customKey = 'custom_sources_json';
   static const _remoteCacheKey = 'remote_sources_json';
   static const _contentModeKey = 'content_mode_v1';
@@ -36,12 +74,14 @@ class SourceRepository extends ChangeNotifier {
   final AssetBundle _bundle;
   final JsonHttp _http;
 
-  List<MediaSource> _bundled = const [];
+  final Map<String, List<MediaSource>> _listSources = {};
   List<MediaSource> _custom = const [];
+  String _activeListId = defaultListId;
   String? _selectedKeyValue;
   final Map<String, SourceAvailability> _availability = {};
   final Map<String, int> _latencyMs = {};
   final Set<String> _probing = {};
+  final Set<String> _probedLists = {};
   int _probeGeneration = 0;
   MediaSource? _localHuangguo;
   ContentMode _contentMode = ContentMode.healthy;
@@ -49,28 +89,53 @@ class SourceRepository extends ChangeNotifier {
 
   ContentMode get contentMode => _contentMode;
 
+  List<SourceListCatalog> get lists => sourceLists;
+
+  String get activeListId => _activeListId;
+
+  SourceListCatalog get activeList =>
+      sourceLists.firstWhere((item) => item.id == _activeListId,
+          orElse: () => sourceLists.first);
+
+  bool hasLoadedList(String id) {
+    final list = _listSources[id];
+    return list != null && list.isNotEmpty;
+  }
+
+
+  /// 所有已加载列表与自定义源，不受当前 tab 和模式过滤。
   List<MediaSource> get allSources {
     final byKey = <String, MediaSource>{};
-    for (final source in [..._bundled, ..._custom]) {
+    for (final sources in _listSources.values) {
+      for (final source in sources) {
+        byKey[source.key] = source;
+      }
+    }
+    for (final source in _custom) {
       byKey[source.key] = source;
     }
     return byKey.values.toList();
   }
 
+  /// 当前 tab 的远程源（加上自定义源），再按健康/成人模式过滤。
   List<MediaSource> get sources {
-    final list = allSources;
-    if (_contentMode == ContentMode.adult) return list;
-    return [
-      for (final source in list)
-        if (source.isVisibleInHealthyMode) source,
-    ];
+    final remote = _listSources[_activeListId] ?? const <MediaSource>[];
+    final byKey = <String, MediaSource>{};
+    for (final source in [...remote, ..._custom]) {
+      byKey[source.key] = source;
+    }
+    return _visibleInMode(byKey.values.toList());
   }
 
   MediaSource? get current {
-    final list = sources;
-    if (list.isEmpty) return null;
-    for (final source in list) {
-      if (source.key == _selectedKeyValue) return source;
+    final key = _selectedKeyValue;
+    if (key == null) return null;
+    for (final source in allSources) {
+      if (source.key != key) continue;
+      if (_contentMode == ContentMode.adult || source.isVisibleInHealthyMode) {
+        return source;
+      }
+      return null;
     }
     return null;
   }
@@ -100,18 +165,55 @@ class SourceRepository extends ChangeNotifier {
     final bundled = _parseSites(raw);
     _localHuangguo = bundled.where((source) => source.isHuangguo).firstOrNull ??
         _canonicalHuangguo;
-    final cached = _loadRemoteCache();
-    _bundled = _withLocalHuangguo(cached.isNotEmpty ? cached : bundled);
+    final cached = _loadRemoteCacheFor(defaultListId);
+    _listSources[defaultListId] =
+        _withLocalHuangguo(cached.isNotEmpty ? cached : bundled);
+    for (final catalog in sourceLists) {
+      if (catalog.id == defaultListId) continue;
+      final listCache = _loadRemoteCacheFor(catalog.id);
+      if (listCache.isEmpty) continue;
+      _listSources[catalog.id] =
+          catalog.pinHuangguo ? _withLocalHuangguo(listCache) : listCache;
+    }
     _custom = _loadCustom();
     _contentMode = _loadContentMode();
     if (_prefs.getString(_contentModeKey) == null) {
       await _prefs.setString(_contentModeKey, _contentMode.name);
     }
+    _activeListId = _loadActiveListId();
     _selectedKeyValue = _prefs.getString(_selectedKey);
     _autoSelected = false;
     _readLatencies();
+    final activeRemote = _listSources[_activeListId];
+    if (_activeListId != defaultListId &&
+        (activeRemote == null || activeRemote.isEmpty)) {
+      try {
+        await refreshRemote();
+      } catch (_) {
+        // 非默认列表没有缓存且远程失败时，tab 先显示空列表。
+      }
+    }
     await _reconcileSelection();
     notifyListeners();
+  }
+
+  Future<void> setActiveList(String id) async {
+    if (sourceLists.every((item) => item.id != id)) return;
+    if (_activeListId == id) return;
+    _activeListId = id;
+    await _prefs.setString(_selectedListKey, id);
+    notifyListeners();
+    final existing = _listSources[id];
+    if (existing == null || existing.isEmpty) {
+      try {
+        await refreshRemote();
+      } catch (_) {
+        // 保留空列表，由界面提示刷新失败。
+      }
+    }
+    if (!_probedLists.contains(id)) {
+      await probeAll();
+    }
   }
 
   Future<void> setContentMode(ContentMode mode) async {
@@ -126,9 +228,16 @@ class SourceRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 冷启动后台任务：先拉远程列表（失败则保留本地/缓存），再探测全部受支持源。
+  /// 冷启动后台任务：先拉远程列表（失败则保留本地/缓存），再探测当前 tab 的受支持源。
   Future<void> refreshOnColdStart() async {
     try {
+      if (_activeListId != defaultListId) {
+        try {
+          await _refreshList(defaultListId);
+        } catch (_) {
+          // 推荐列表缓存刷新失败不影响当前 tab。
+        }
+      }
       await refreshRemote();
     } catch (_) {
       // 远程失败时继续使用本地或上次缓存的列表。
@@ -137,25 +246,33 @@ class SourceRepository extends ChangeNotifier {
   }
 
   Future<void> refreshRemote() async {
-    final data = await _http
-        .get(Uri.parse(remoteConfigUrl))
-        .timeout(const Duration(seconds: 15));
-    _bundled = _withLocalHuangguo(_parseSitesMap(data));
-    await _prefs.setString(_remoteCacheKey, jsonEncode(data));
+    await _refreshList(_activeListId);
     await _reconcileSelection();
     notifyListeners();
   }
 
+  Future<void> _refreshList(String id) async {
+    final catalog = sourceLists.cast<SourceListCatalog?>().firstWhere(
+          (item) => item?.id == id,
+          orElse: () => null,
+        );
+    if (catalog == null) return;
+    final data = await _http
+        .get(Uri.parse(catalog.url))
+        .timeout(const Duration(seconds: 15));
+    final parsed = _parseSitesMap(data, cmsOnly: catalog.cmsOnly);
+    _listSources[id] =
+        catalog.pinHuangguo ? _withLocalHuangguo(parsed) : parsed;
+    await _prefs.setString(_cacheKeyFor(id), jsonEncode(data));
+    _probedLists.remove(id);
+  }
+
   Future<void> probeAll() async {
     final generation = ++_probeGeneration;
+    final listId = _activeListId;
     final list = sources;
     final targets = list.where((source) => source.isSupported).toList();
-    _availability.removeWhere(
-      (key, _) => list.every((source) => source.key != key),
-    );
-    _latencyMs.removeWhere(
-      (key, _) => list.every((source) => source.key != key),
-    );
+    // 只重置当前 tab 里即将探测的源，保留其它列表已测过的延迟。
     _probing
       ..clear()
       ..addAll([for (final source in targets) source.key]);
@@ -170,6 +287,7 @@ class SourceRepository extends ChangeNotifier {
     notifyListeners();
     if (targets.isEmpty) {
       _probing.clear();
+      _probedLists.add(listId);
       return;
     }
 
@@ -209,6 +327,7 @@ class SourceRepository extends ChangeNotifier {
       ),
     );
     if (generation != _probeGeneration) return;
+    _probedLists.add(listId);
     await _promoteHealthyDefaultIfNeeded();
   }
 
@@ -273,8 +392,24 @@ class SourceRepository extends ChangeNotifier {
     }
   }
 
+  String _loadActiveListId() {
+    final id = _prefs.getString(_selectedListKey);
+    if (id != null && sourceLists.any((item) => item.id == id)) {
+      return id;
+    }
+    return defaultListId;
+  }
+
+  List<MediaSource> _visibleInMode(List<MediaSource> list) {
+    if (_contentMode == ContentMode.adult) return list;
+    return [
+      for (final source in list)
+        if (source.isVisibleInHealthyMode) source,
+    ];
+  }
+
   Future<void> _reconcileSelection() async {
-    if (current != null || sources.isEmpty) return;
+    if (current != null || _visibleInMode(allSources).isEmpty) return;
     await _applyDefaultSelection(force: true);
   }
 
@@ -288,28 +423,33 @@ class SourceRepository extends ChangeNotifier {
   }
 
   MediaSource? get _defaultSourceForMode {
-    if (_contentMode == ContentMode.healthy) {
-      return _defaultHealthySource;
+    // 自动选源仍以原来的合集列表为准，避免切换 tab 改变默认源。
+    if (_contentMode == ContentMode.adult) {
+      return allSources.where((source) => source.isHuangguo).firstOrNull ??
+          _visibleInMode(_defaultListSources + _custom).firstOrNull;
     }
-    return allSources.where((source) => source.isHuangguo).firstOrNull ??
-        sources.firstOrNull;
+    return _defaultHealthySource;
   }
 
+  List<MediaSource> get _defaultListSources =>
+      _listSources[defaultListId] ?? const [];
+
   MediaSource? get _defaultHealthySource {
+    final pool = _visibleInMode([..._defaultListSources, ..._custom]);
     final preferred = [
-      for (final source in sources)
+      for (final source in pool)
         if (source.isHealthyPreferred) source,
     ];
     final blue = [
-      for (final source in sources)
+      for (final source in pool)
         if (source.isHealthyMarked && source.isSupported) source,
     ];
     return _firstUsable(preferred) ??
         preferred.firstOrNull ??
         _firstUsable(blue) ??
         blue.firstOrNull ??
-        sources.where((source) => source.isSupported).firstOrNull ??
-        sources.firstOrNull;
+        pool.where((source) => source.isSupported).firstOrNull ??
+        pool.firstOrNull;
   }
 
   MediaSource? _firstUsable(List<MediaSource> candidates) {
@@ -351,7 +491,7 @@ class SourceRepository extends ChangeNotifier {
   MediaSource get _pinnedHuangguo => _localHuangguo ?? _canonicalHuangguo;
 
   MediaSource? _sourceByKey(String key) {
-    for (final source in sources) {
+    for (final source in allSources) {
       if (source.key == key) return source;
     }
     return null;
@@ -378,19 +518,34 @@ class SourceRepository extends ChangeNotifier {
     return [...others.sublist(0, index), pinned, ...others.sublist(index)];
   }
 
-  List<MediaSource> _parseSites(String raw) {
+  List<MediaSource> _parseSites(String raw, {bool cmsOnly = false}) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) return const [];
-    return _parseSitesMap(Map<String, dynamic>.from(decoded));
+    return _parseSitesMap(Map<String, dynamic>.from(decoded), cmsOnly: cmsOnly);
   }
 
-  List<MediaSource> _parseSitesMap(Map<String, dynamic> decoded) {
+  List<MediaSource> _parseSitesMap(
+    Map<String, dynamic> decoded, {
+    bool cmsOnly = false,
+  }) {
     final sites = decoded['sites'];
     if (sites is! List) return const [];
-    return [
+    final parsed = [
       for (final item in sites)
         if (item is Map) MediaSource.fromJson(Map<String, dynamic>.from(item)),
     ];
+    if (!cmsOnly) return parsed;
+    return [
+      for (final source in parsed)
+        if (source.isCms && _hasHttpApi(source.api)) source,
+    ];
+  }
+
+  bool _hasHttpApi(String api) {
+    final uri = Uri.tryParse(api.trim());
+    return uri != null &&
+        (uri.isScheme('http') || uri.isScheme('https')) &&
+        uri.host.isNotEmpty;
   }
 
   void _readLatencies() {
@@ -415,11 +570,20 @@ class SourceRepository extends ChangeNotifier {
     return _prefs.setString(_latencyKey, jsonEncode(_latencyMs));
   }
 
-  List<MediaSource> _loadRemoteCache() {
-    final raw = _prefs.getString(_remoteCacheKey);
+  String _cacheKeyFor(String id) {
+    if (id == defaultListId) return _remoteCacheKey;
+    return '${_remoteCacheKey}_$id';
+  }
+
+  List<MediaSource> _loadRemoteCacheFor(String id) {
+    final raw = _prefs.getString(_cacheKeyFor(id));
     if (raw == null || raw.isEmpty) return const [];
+    final catalog = sourceLists.cast<SourceListCatalog?>().firstWhere(
+          (item) => item?.id == id,
+          orElse: () => null,
+        );
     try {
-      final parsed = _parseSites(raw);
+      final parsed = _parseSites(raw, cmsOnly: catalog?.cmsOnly ?? false);
       return parsed.isEmpty ? const [] : parsed;
     } catch (_) {
       return const [];

@@ -314,8 +314,46 @@ class HuangguoApiClient implements VodClient {
 
   @override
   Future<List<VodCategory>> categories() async {
-    // 官方前端已改为直连源站，分类枚举也是内置的；不再先打会超时的 Worker。
-    return fallbackCategories;
+    // 内置分类对齐官方接口版导航；专题 slug 是动态的，加载时向源站取一次。
+    final categories = [...fallbackCategories];
+    try {
+      final data = await _siteGet('/api/topics');
+      final payload = data['data'];
+      final items = payload is Map && payload['items'] is List
+          ? payload['items'] as List
+          : const [];
+      for (final item in items) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final slug = _asString(map['slug']);
+        if (slug.isEmpty) continue;
+        categories.add(
+          VodCategory(id: 'topic:$slug', name: '专题·${_topicShort(map['title'])}'),
+        );
+      }
+    } catch (_) {
+      // 专题取不到时不影响其它分类。
+    }
+    return categories;
+  }
+
+  String _topicShort(Object? title) {
+    var text = _asString(title)
+        .replaceAll('AI成人短剧专辑', '')
+        .replaceAll('AI短剧专辑', '')
+        .replaceAll('AI成人漫剧专辑', '')
+        .replaceAll('AI漫剧专辑', '')
+        .replaceAll('专辑', '')
+        .replaceAll('专题', '')
+        .replaceAll('AI', '')
+        .replaceAll('成人', '')
+        .replaceAll('短剧', '')
+        .replaceAll('漫剧', '');
+    if (text.isEmpty) {
+      text = _asString(title).replaceAll('AI', '');
+    }
+    if (text.length > 10) text = text.substring(0, 10);
+    return text;
   }
 
   @override

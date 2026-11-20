@@ -26,6 +26,21 @@ import 'ui/features/search/search_view_model.dart';
 import 'ui/features/sources/sources_view.dart';
 import 'ui/features/sources/sources_view_model.dart';
 
+
+String _decodeRouteParam(String? value) {
+  final raw = value ?? '';
+  if (raw.isEmpty || !raw.contains('%')) return raw;
+  try {
+    return Uri.decodeComponent(raw);
+  } on ArgumentError {
+    // go_router 可能已经解码过；源 key / 影片 id 里若带不完整的 %，不能再解一次。
+    return raw;
+  } on FormatException {
+    return raw;
+  }
+}
+
+
 class HaoKanShiPinApp extends StatefulWidget {
   const HaoKanShiPinApp({
     super.key,
@@ -164,8 +179,8 @@ class _HaoKanShiPinAppState extends State<HaoKanShiPinApp> {
           path: '/detail/:sourceKey/:id',
           builder: (context, state) {
             final sourceKey =
-                Uri.decodeComponent(state.pathParameters['sourceKey'] ?? '');
-            final id = Uri.decodeComponent(state.pathParameters['id'] ?? '');
+                _decodeRouteParam(state.pathParameters['sourceKey']);
+            final id = _decodeRouteParam(state.pathParameters['id']);
             return DetailView(
               key: ValueKey('detail_${sourceKey}_$id'),
               catalogRepository: _catalogRepository,

@@ -3,10 +3,52 @@ import 'package:flutter/material.dart';
 import '../../../domain/models/media_source.dart';
 import 'sources_view_model.dart';
 
-class SourcesView extends StatelessWidget {
+class SourcesView extends StatefulWidget {
   const SourcesView({super.key, required this.viewModel});
 
   final SourcesViewModel viewModel;
+
+  @override
+  State<SourcesView> createState() => _SourcesViewState();
+}
+
+class _SourcesViewState extends State<SourcesView>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  SourcesViewModel get viewModel => widget.viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    final lists = viewModel.lists;
+    final initial = lists.indexWhere((item) => item.id == viewModel.activeListId);
+    _tabController = TabController(
+      length: lists.length,
+      vsync: this,
+      initialIndex: initial < 0 ? 0 : initial,
+    );
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    final lists = viewModel.lists;
+    if (_tabController.index < 0 || _tabController.index >= lists.length) {
+      return;
+    }
+    final id = lists[_tabController.index].id;
+    if (id == viewModel.activeListId) return;
+    viewModel.selectList(id);
+  }
+
+  @override
+  void dispose() {
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   Future<void> _addSource(BuildContext context) async {
     final nameController = TextEditingController();
@@ -57,6 +99,16 @@ class SourcesView extends StatelessWidget {
       listenable: viewModel,
       builder: (context, _) {
         final currentKey = viewModel.current?.key;
+        final activeIndex =
+            viewModel.lists.indexWhere((item) => item.id == viewModel.activeListId);
+        if (activeIndex >= 0 &&
+            !_tabController.indexIsChanging &&
+            _tabController.index != activeIndex) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _tabController.index == activeIndex) return;
+            _tabController.animateTo(activeIndex);
+          });
+        }
         if (viewModel.message != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final message = viewModel.message;
@@ -69,9 +121,17 @@ class SourcesView extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: const Text('数据源'),
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                for (final list in viewModel.lists) Tab(text: list.name),
+              ],
+            ),
             actions: [
               IconButton(
-                tooltip: '刷新源列表并检测可用性与延迟',
+                tooltip: '刷新当前源列表并检测可用性与延迟',
                 onPressed:
                     viewModel.refreshing ? null : viewModel.refreshRemote,
                 icon: viewModel.refreshing

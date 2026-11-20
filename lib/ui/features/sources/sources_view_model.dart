@@ -12,6 +12,8 @@ class SourcesViewModel extends ChangeNotifier {
   final SourceRepository _sourceRepository;
   bool _disposed = false;
 
+  List<SourceListCatalog> get lists => _sourceRepository.lists;
+  String get activeListId => _sourceRepository.activeListId;
   List<MediaSource> get sources => _sourceRepository.sources;
   MediaSource? get current => _sourceRepository.current;
   bool refreshing = false;
@@ -28,6 +30,25 @@ class SourcesViewModel extends ChangeNotifier {
 
   int? latencyMsOf(MediaSource source) =>
       _sourceRepository.latencyMsOf(source.key);
+
+  Future<void> selectList(String id) async {
+    if (id == _sourceRepository.activeListId) return;
+    final loading = !_sourceRepository.hasLoadedList(id);
+    if (loading) {
+      refreshing = true;
+      message = null;
+      _notify();
+    }
+    try {
+      await _sourceRepository.setActiveList(id);
+    } catch (e) {
+      if (_disposed) return;
+      message = '源列表加载失败：$e';
+    }
+    if (_disposed) return;
+    refreshing = false;
+    _notify();
+  }
 
   Future<void> select(MediaSource source) async {
     await _sourceRepository.select(source);
@@ -67,7 +88,7 @@ class SourcesViewModel extends ChangeNotifier {
       await _sourceRepository.probeAll();
       if (_disposed) return;
       message = listError == null
-          ? '源列表已更新，并完成可用性与延迟检测'
+          ? '「${_sourceRepository.activeList.name}」源列表已更新，并完成可用性与延迟检测'
           : '源列表刷新失败，已按当前列表完成可用性检测：$listError';
     } catch (e) {
       if (_disposed) return;
