@@ -20,6 +20,7 @@ class ProfileView extends StatelessWidget {
         id: record.vodId,
         name: record.name,
         pic: record.pic,
+        scope: 'profile',
       ),
     );
   }
@@ -333,7 +334,7 @@ class _ContinueCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  WatchCover(record: record, borderRadius: 12),
+                  WatchCover(record: record, borderRadius: 12, heroScope: 'profile'),
                   Positioned(
                     left: 0,
                     right: 0,

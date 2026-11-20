@@ -101,6 +101,7 @@ class HistoryView extends StatelessWidget {
                                 id: record.vodId,
                                 name: record.name,
                                 pic: record.pic,
+                                scope: 'history',
                               ),
                             ),
                           ),

@@ -139,6 +139,7 @@ class _DetailViewState extends State<DetailView> {
     String year = '',
     String actor = '',
     String typeName = '',
+    String? heroTag,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,6 +149,7 @@ class _DetailViewState extends State<DetailView> {
           sourceKey: sourceKey,
           id: id,
           title: title,
+          heroTag: heroTag,
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -226,6 +228,7 @@ class _DetailViewState extends State<DetailView> {
                       title: preview.name,
                       remarks: preview.remarks,
                       typeName: preview.typeName,
+                      heroTag: preview.heroTag,
                     ),
                   ),
                 Expanded(
@@ -254,6 +257,7 @@ class _DetailViewState extends State<DetailView> {
                 year: detail.year,
                 actor: detail.actor,
                 typeName: item.typeName,
+                heroTag: preview?.heroTag,
               ),
               if (detail.content.isNotEmpty) ...[
                 const SizedBox(height: 20),
@@ -372,12 +376,14 @@ class _CoverThumb extends StatelessWidget {
     required this.sourceKey,
     required this.id,
     required this.title,
+    this.heroTag,
   });
 
   final String url;
   final String sourceKey;
   final String id;
   final String title;
+  final String? heroTag;
 
   void _open(BuildContext context) {
     if (url.isEmpty) return;
@@ -415,7 +421,8 @@ class _CoverThumb extends StatelessWidget {
       child: SizedBox(width: 120, height: 168, child: cover),
     );
     final hero = Hero(
-      tag: CoverHeroInfo.tag(sourceKey, id),
+      tag: heroTag ??
+          CoverHeroInfo.tag(sourceKey, id, scope: 'detail'),
       child: clipped,
     );
     if (url.isEmpty) return hero;

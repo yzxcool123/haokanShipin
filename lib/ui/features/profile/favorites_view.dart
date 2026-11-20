@@ -68,6 +68,7 @@ class FavoritesView extends StatelessWidget {
                                 name: item.name,
                                 pic: item.pic,
                                 remarks: item.remarks,
+                                scope: 'favorites',
                               ),
                             ),
                           ),
@@ -105,7 +106,7 @@ class _FavoriteTile extends StatelessWidget {
               width: 56,
               height: 76,
               child: Hero(
-                tag: CoverHeroInfo.tag(item.sourceKey, item.vodId),
+                tag: CoverHeroInfo.tag(item.sourceKey, item.vodId, scope: 'favorites'),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: ColoredBox(

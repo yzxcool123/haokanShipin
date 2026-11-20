@@ -128,6 +128,7 @@ class _SearchViewState extends State<SearchView> {
           key: ValueKey('${item.sourceKey}_${item.id}'),
           item: item,
           cacheWidth: cacheWidth,
+          heroScope: 'search',
           onTap: () => openDetail(
             context,
             CoverHeroInfo(
@@ -137,6 +138,7 @@ class _SearchViewState extends State<SearchView> {
               pic: item.pic,
               remarks: item.remarks,
               typeName: item.typeName,
+              scope: 'search',
             ),
           ),
         );

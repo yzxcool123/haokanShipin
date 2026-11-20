@@ -10,10 +10,12 @@ class VodCard extends StatelessWidget {
     required this.item,
     required this.onTap,
     this.cacheWidth,
+    this.heroScope = 'catalog',
   });
 
   final VodItem item;
   final VoidCallback onTap;
+  final String heroScope;
   final int? cacheWidth;
 
   @override
@@ -26,7 +28,7 @@ class VodCard extends StatelessWidget {
         children: [
           Expanded(
             child: Hero(
-              tag: CoverHeroInfo.tag(item.sourceKey, item.id),
+              tag: CoverHeroInfo.tag(item.sourceKey, item.id, scope: heroScope),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(14),
                 clipBehavior: Clip.hardEdge,

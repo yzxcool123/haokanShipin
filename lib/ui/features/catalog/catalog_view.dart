@@ -109,6 +109,7 @@ class _CatalogViewState extends State<CatalogView> {
         pic: item.pic,
         remarks: item.remarks,
         typeName: item.typeName,
+        scope: 'catalog',
       ),
     );
   }
@@ -302,6 +303,7 @@ class _CatalogPaneState extends State<_CatalogPane> {
             key: ValueKey('${item.sourceKey}_${item.id}'),
             item: item,
             cacheWidth: cacheWidth,
+            heroScope: 'catalog',
             onTap: () => widget.onOpen(item),
           );
         },

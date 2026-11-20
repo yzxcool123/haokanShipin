@@ -11,12 +11,14 @@ class WatchCover extends StatelessWidget {
     this.width,
     this.height,
     this.borderRadius = 10,
+    this.heroScope = 'history',
   });
 
   final WatchRecord record;
   final double? width;
   final double? height;
   final double borderRadius;
+  final String heroScope;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +26,7 @@ class WatchCover extends StatelessWidget {
       width: width,
       height: height,
       child: Hero(
-        tag: CoverHeroInfo.tag(record.sourceKey, record.vodId),
+        tag: CoverHeroInfo.tag(record.sourceKey, record.vodId, scope: heroScope),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius),
           child: Stack(

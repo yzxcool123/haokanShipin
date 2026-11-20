@@ -27,7 +27,7 @@ class WatchRecordTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                WatchCover(record: record, width: 56, height: 76, borderRadius: 8),
+                WatchCover(record: record, width: 56, height: 76, borderRadius: 8, heroScope: 'history'),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
